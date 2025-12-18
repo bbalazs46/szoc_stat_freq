@@ -1,5 +1,5 @@
 export const DPR_FALLBACK = 1;
-export const BG_COLOR = [0.9, 0.9, 0.9, 1];
+export const BG_COLOR = [0.1, 0.2, 0.5, 1];
 export const POINT_COLOR = [1, 1, 1, 1];
 export const GRID_SPACING = 48;
 export const BASE_POINT_SIZE = 10;
