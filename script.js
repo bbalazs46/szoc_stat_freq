@@ -4,18 +4,19 @@ const DPR_FALLBACK = 1;
 const BG_COLOR = [0.9, 0.9, 0.9, 1];
 const POINT_COLOR = [1, 1, 1, 1];
 const GRID_SPACING = 48;
-const GRID_RANGE = 120;
-const BASE_POINT_SIZE = 50;
+const BASE_POINT_SIZE = 10;
 const MIN_POINT_SIZE = 1.5;
 const SIZE_FALLOFF = 0.0004;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const EPS = 1e-4;
 const DET_EPS = 1e-8;
-const TRAIL_LENGTH = 400;
-const HEAD_POINT_SIZE = 80;
+const TRAIL_DURATION = 5.0;
+const TRAIL_SAMPLES = 120;
+const HEAD_POINT_SIZE = 8;
 const MOVER_X_OFFSET = -300;
-const HIT_RADIUS = 180;
+const HIT_RADIUS = 18;
+const WARP_LERP = 0.1;
 
 const identityTransform = () => ({
   m00: 1, m01: 0,
@@ -147,6 +148,51 @@ if (!canvas) {
       }
     `;
 
+    const bgVertexSource = `
+      attribute vec2 a_position;
+      void main() {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    `;
+
+    const bgFragmentSource = `
+      precision mediump float;
+      uniform vec2 u_resolution;
+      uniform mat3 u_invTransform;
+      uniform mat2 u_warp;
+      uniform float u_gridSpacing;
+      uniform float u_verticalSpacing;
+      uniform float u_halfSpacing;
+      uniform float u_baseSize;
+      uniform float u_sizeFalloff;
+      uniform float u_zoom;
+      uniform vec2 u_cameraWorld;
+      uniform vec4 u_color;
+
+      float roundf(float v) { return floor(v + 0.5); }
+
+      void main() {
+        vec2 frag = gl_FragCoord.xy;
+        vec2 view = vec2(frag.x - u_resolution.x * 0.5, u_resolution.y * 0.5 - frag.y);
+        vec3 world3 = u_invTransform * vec3(view, 1.0);
+        vec2 world = world3.xy;
+
+        float row = roundf(world.y / u_verticalSpacing);
+        float offset = mod(row, 2.0) * u_halfSpacing;
+        float col = roundf((world.x - offset) / u_gridSpacing);
+        vec2 center = vec2(col * u_gridSpacing + offset, row * u_verticalSpacing);
+
+        vec2 local = world - center;
+        vec2 warped = u_warp * local;
+
+        float radius = u_baseSize * u_zoom / (1.0 + u_sizeFalloff * length(center - u_cameraWorld));
+        float d = length(warped);
+        if (d > radius) discard;
+
+        gl_FragColor = u_color;
+      }
+    `;
+
     const compileShader = (type, source) => {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
@@ -178,8 +224,9 @@ if (!canvas) {
 
     const program = createProgram(vertexSource, fragmentSource);
     const lineProgram = createProgram(lineVertexSource, lineFragmentSource);
+    const bgProgram = createProgram(bgVertexSource, bgFragmentSource);
 
-    if (!program || !lineProgram) {
+    if (!program || !lineProgram || !bgProgram) {
       displayMessage('Shader compilation failed.');
     } else {
       gl.useProgram(program);
@@ -199,32 +246,38 @@ if (!canvas) {
       const lineUniTransform = gl.getUniformLocation(lineProgram, 'u_transform');
       const lineUniColor = gl.getUniformLocation(lineProgram, 'u_color');
 
-      const buildPositions = () => {
-        const list = [];
-        const halfSpacing = GRID_SPACING * 0.5;
-        const verticalSpacing = GRID_SPACING * Math.sqrt(3) * 0.5;
-
-        for (let row = -GRID_RANGE; row <= GRID_RANGE; row++) {
-          const y = row * verticalSpacing;
-          const offset = (row & 1) ? halfSpacing : 0;
-          for (let col = -GRID_RANGE; col <= GRID_RANGE; col++) {
-            const x = (col * GRID_SPACING) + offset;
-            list.push(x, y);
-          }
-        }
-        return new Float32Array(list);
-      };
-
-      const positions = buildPositions();
+      const bgAttribPosition = gl.getAttribLocation(bgProgram, 'a_position');
+      const bgUniResolution = gl.getUniformLocation(bgProgram, 'u_resolution');
+      const bgUniInvTransform = gl.getUniformLocation(bgProgram, 'u_invTransform');
+      const bgUniWarp = gl.getUniformLocation(bgProgram, 'u_warp');
+      const bgUniGridSpacing = gl.getUniformLocation(bgProgram, 'u_gridSpacing');
+      const bgUniVerticalSpacing = gl.getUniformLocation(bgProgram, 'u_verticalSpacing');
+      const bgUniHalfSpacing = gl.getUniformLocation(bgProgram, 'u_halfSpacing');
+      const bgUniBaseSize = gl.getUniformLocation(bgProgram, 'u_baseSize');
+      const bgUniSizeFalloff = gl.getUniformLocation(bgProgram, 'u_sizeFalloff');
+      const bgUniZoom = gl.getUniformLocation(bgProgram, 'u_zoom');
+      const bgUniCameraWorld = gl.getUniformLocation(bgProgram, 'u_cameraWorld');
+      const bgUniColor = gl.getUniformLocation(bgProgram, 'u_color');
 
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(attribPosition);
       gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
       gl.useProgram(lineProgram);
       gl.enableVertexAttribArray(lineAttribPosition);
       gl.useProgram(program);
+
+      const bgBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, bgBuffer);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+          -1, -1,
+          3, -1,
+          -1, 3
+        ]),
+        gl.STATIC_DRAW
+      );
 
       gl.uniform4fv(uniColor, POINT_COLOR);
       gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
@@ -232,7 +285,9 @@ if (!canvas) {
       gl.uniform1f(uniMinPointSize, MIN_POINT_SIZE);
 
       const state = {
-        transform: identityTransform()
+        transform: identityTransform(),
+        warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
+        prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
 
       const pointers = new Map();
@@ -310,9 +365,9 @@ if (!canvas) {
       })();
 
       const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) }
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) }
       ];
       const moverScreens = new Array(movers.length).fill(null);
 
@@ -334,6 +389,8 @@ if (!canvas) {
         gl.uniform2f(uniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.useProgram(lineProgram);
         gl.uniform2f(lineUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.useProgram(bgProgram);
+        gl.uniform2f(bgUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.useProgram(program);
         canvasDirty = false;
       };
@@ -431,20 +488,6 @@ if (!canvas) {
         y: mover.amp * Math.sin(t * mover.freq + mover.phase)
       });
 
-      const updateMoverTrail = (mover, pos) => {
-        mover.trail.push(pos);
-        let distance = 0;
-        for (let i = mover.trail.length - 1; i > 0; i--) {
-          const a = mover.trail[i];
-          const b = mover.trail[i - 1];
-          distance += Math.hypot(a.x - b.x, a.y - b.y);
-          if (distance > TRAIL_LENGTH) {
-            mover.trail.splice(0, i - 1);
-            break;
-          }
-        }
-      };
-
       canvas.addEventListener('pointerdown', (e) => {
         const world = viewToWorld(screenToView(e.clientX, e.clientY));
 
@@ -528,39 +571,77 @@ if (!canvas) {
           tf.tx, tf.ty, 1
         ]);
         const cameraWorld = viewToWorld({ x: 0, y: 0 });
+        const invTf = invertTransform(state.transform);
+        const invArr = new Float32Array([
+          invTf.m00, invTf.m10, 0,
+          invTf.m01, invTf.m11, 0,
+          invTf.tx, invTf.ty, 1
+        ]);
+
+        const lin = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
+        const changed =
+          Math.abs(lin.m00 - state.prevLinear.m00) > 1e-6 ||
+          Math.abs(lin.m01 - state.prevLinear.m01) > 1e-6 ||
+          Math.abs(lin.m10 - state.prevLinear.m10) > 1e-6 ||
+          Math.abs(lin.m11 - state.prevLinear.m11) > 1e-6;
+        if (changed) {
+          state.warp = { ...lin };
+          state.prevLinear = { ...lin };
+        }
+
+        const detWarp = lin.m00 * lin.m11 - lin.m01 * lin.m10;
+        const targetScale = Math.sqrt(Math.abs(detWarp));
+        const targetWarp = { m00: targetScale, m01: 0, m10: 0, m11: targetScale };
+        state.warp.m00 += (targetWarp.m00 - state.warp.m00) * WARP_LERP;
+        state.warp.m01 += (targetWarp.m01 - state.warp.m01) * WARP_LERP;
+        state.warp.m10 += (targetWarp.m10 - state.warp.m10) * WARP_LERP;
+        state.warp.m11 += (targetWarp.m11 - state.warp.m11) * WARP_LERP;
+        const warpArr = new Float32Array([
+          state.warp.m00, state.warp.m10,
+          state.warp.m01, state.warp.m11
+        ]);
+
+        gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.useProgram(bgProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, bgBuffer);
+        gl.enableVertexAttribArray(bgAttribPosition);
+        gl.vertexAttribPointer(bgAttribPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform2f(bgUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.uniformMatrix3fv(bgUniInvTransform, false, invArr);
+        gl.uniformMatrix2fv(bgUniWarp, false, warpArr);
+        gl.uniform1f(bgUniGridSpacing, GRID_SPACING);
+        gl.uniform1f(bgUniVerticalSpacing, GRID_SPACING * Math.sqrt(3) * 0.5);
+        gl.uniform1f(bgUniHalfSpacing, GRID_SPACING * 0.5);
+        gl.uniform1f(bgUniBaseSize, BASE_POINT_SIZE);
+        gl.uniform1f(bgUniSizeFalloff, SIZE_FALLOFF);
+        gl.uniform1f(bgUniZoom, effectiveScale(tf));
+        gl.uniform2f(bgUniCameraWorld, cameraWorld.x, cameraWorld.y);
+        gl.uniform4fv(bgUniColor, POINT_COLOR);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
 
         gl.useProgram(program);
         gl.uniformMatrix3fv(uniTransform, false, matrixArr);
         gl.uniform1f(uniZoom, effectiveScale(tf));
         gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
-
-        gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        gl.uniform4fv(uniColor, POINT_COLOR);
-        gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
-        gl.drawArrays(gl.POINTS, 0, positions.length / 2);
 
         movers.forEach((mover, idx) => {
           const pos = evalMover(mover, t);
-          updateMoverTrail(mover, pos);
           moverScreens[idx] = worldToScreen(pos);
 
-          const count = mover.trail.length;
-          const required = count * 2;
-          if (required > mover.flat.length) {
-            mover.flat = new Float32Array(required);
-          }
-          for (let i = 0; i < count; i++) {
+          const sampleCount = TRAIL_SAMPLES;
+          const dt = TRAIL_DURATION / sampleCount;
+          for (let i = 0; i < sampleCount; i++) {
+            const tt = t - TRAIL_DURATION + dt * i;
+            const sample = evalMover(mover, tt);
             const idx2 = i * 2;
-            mover.flat[idx2] = mover.trail[i].x;
-            mover.flat[idx2 + 1] = mover.trail[i].y;
+            mover.flat[idx2] = sample.x;
+            mover.flat[idx2 + 1] = sample.y;
           }
-          const slice = mover.flat.subarray(0, count * 2);
+          const slice = mover.flat;
 
-          if (count >= 2) {
+          if (sampleCount >= 2) {
             gl.useProgram(lineProgram);
             gl.uniformMatrix3fv(lineUniTransform, false, matrixArr);
             const trailColor = trailColorFromHead(mover.color);
@@ -569,21 +650,20 @@ if (!canvas) {
             gl.bufferData(gl.ARRAY_BUFFER, slice, gl.DYNAMIC_DRAW);
             gl.enableVertexAttribArray(lineAttribPosition);
             gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
-            gl.drawArrays(gl.LINE_STRIP, 0, count);
+            gl.drawArrays(gl.LINE_STRIP, 0, sampleCount);
           }
 
-          if (count >= 1) {
+          if (sampleCount >= 1) {
             gl.useProgram(program);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
             gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
             gl.uniform1f(uniPointSize, HEAD_POINT_SIZE);
             gl.uniform4fv(uniColor, mover.color);
-            gl.drawArrays(gl.POINTS, count - 1, 1);
+            gl.drawArrays(gl.POINTS, sampleCount - 1, 1);
           }
         });
 
         if (editor.active !== null) {
-          const mover = movers[editor.active];
           const screenPos = moverScreens[editor.active];
           if (screenPos) {
             editor.panel.style.left = `${screenPos.x}px`;
