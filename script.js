@@ -14,7 +14,6 @@ const EPS = 1e-4;
 const DET_EPS = 1e-8;
 const TRAIL_LENGTH = 400;
 const HEAD_POINT_SIZE = 8;
-const TRAIL_POINT_SIZE = 6;
 const MOVER_X_OFFSET = -300;
 
 const identityTransform = () => ({
@@ -205,8 +204,6 @@ if (!canvas) {
       gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
       gl.useProgram(lineProgram);
       gl.enableVertexAttribArray(lineAttribPosition);
-      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
       gl.useProgram(program);
 
       gl.uniform4fv(uniColor, POINT_COLOR);
@@ -409,6 +406,7 @@ if (!canvas) {
             gl.uniform4fv(lineUniColor, mover.trailColor);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(trailFlat), gl.DYNAMIC_DRAW);
+            gl.enableVertexAttribArray(lineAttribPosition);
             gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
             gl.drawArrays(gl.LINE_STRIP, 0, trailFlat.length / 2);
           }
