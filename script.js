@@ -15,6 +15,7 @@ const DET_EPS = 1e-8;
 const TRAIL_LENGTH = 400;
 const HEAD_POINT_SIZE = 8;
 const MOVER_X_OFFSET = -300;
+const HIT_RADIUS = 18;
 
 const identityTransform = () => ({
   m00: 1, m01: 0,
@@ -54,6 +55,25 @@ const effectiveScale = (t) => {
 };
 
 const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+const colorToHex = (c) => {
+  const toByte = (v) => Math.round(clamp(v, 0, 1) * 255);
+  const [r, g, b] = c;
+  return `#${[r, g, b].map(toByte).map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+};
+
+const hexToColor = (hex) => {
+  const clean = hex.replace('#', '');
+  const num = parseInt(clean, 16);
+  return [
+    ((num >> 16) & 0xff) / 255,
+    ((num >> 8) & 0xff) / 255,
+    (num & 0xff) / 255,
+    1
+  ];
+};
+
+const trailColorFromHead = (color) => [color[0], color[1], color[2], 0.5];
 
 const displayMessage = (text) => {
   const message = document.createElement('p');
@@ -217,11 +237,82 @@ if (!canvas) {
 
       const pointers = new Map();
       const startTime = performance.now();
+      const editor = (() => {
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.padding = '8px';
+        panel.style.background = '#fff';
+        panel.style.border = '1px solid #ccc';
+        panel.style.borderRadius = '6px';
+        panel.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+        panel.style.minWidth = '180px';
+        panel.style.fontFamily = 'sans-serif';
+        panel.style.fontSize = '13px';
+        panel.style.display = 'none';
+        panel.style.pointerEvents = 'auto';
+        panel.style.userSelect = 'none';
+        panel.style.transform = 'translate(-50%, -100%)';
+
+        const colorLabel = document.createElement('label');
+        colorLabel.textContent = 'Szín: ';
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.style.marginBottom = '6px';
+        colorInput.style.width = '70px';
+        colorLabel.appendChild(colorInput);
+
+        const freqLabel = document.createElement('label');
+        freqLabel.textContent = 'Freq: ';
+        const freqInput = document.createElement('input');
+        freqInput.type = 'number';
+        freqInput.step = '0.1';
+        freqInput.style.width = '80px';
+        freqInput.style.marginBottom = '6px';
+        freqLabel.appendChild(freqInput);
+
+        const phaseLabel = document.createElement('label');
+        phaseLabel.textContent = 'Fázis: ';
+        const phaseInput = document.createElement('input');
+        phaseInput.type = 'number';
+        phaseInput.step = '0.1';
+        phaseInput.style.width = '80px';
+        phaseLabel.appendChild(phaseInput);
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Bezár';
+        closeBtn.style.marginTop = '6px';
+
+        const layout = document.createElement('div');
+        layout.style.display = 'grid';
+        layout.style.gridTemplateColumns = 'auto 1fr';
+        layout.style.gridRowGap = '6px';
+        layout.style.columnGap = '6px';
+
+        layout.appendChild(colorLabel);
+        layout.appendChild(document.createElement('div'));
+        layout.appendChild(freqLabel);
+        layout.appendChild(document.createElement('div'));
+        layout.appendChild(phaseLabel);
+        layout.appendChild(document.createElement('div'));
+        layout.appendChild(closeBtn);
+
+        panel.appendChild(layout);
+        document.body.appendChild(panel);
+
+        return {
+          panel,
+          colorInput,
+          freqInput,
+          phaseInput,
+          closeBtn,
+          active: null
+        };
+      })();
 
       const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trailColor: [1, 0.2, 0.2, 0.5], trail: [], flat: null },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trailColor: [0.2, 0.6, 1, 0.5], trail: [], flat: null },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trailColor: [0.1, 0.9, 0.5, 0.5], trail: [], flat: null }
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trail: [], flat: null, screen: null },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trail: [], flat: null, screen: null },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trail: [], flat: null, screen: null }
       ];
 
       const moverBuffers = movers.map(() => gl.createBuffer());
@@ -251,6 +342,14 @@ if (!canvas) {
       const viewToWorld = (viewPt) => {
         const inv = invertTransform(state.transform);
         return transformPoint(inv, viewPt);
+      };
+
+      const worldToScreen = (p) => {
+        const view = transformPoint(state.transform, p);
+        return {
+          x: view.x + canvas.clientWidth * 0.5,
+          y: canvas.clientHeight * 0.5 - view.y
+        };
       };
 
       const updateTransformFromPointers = () => {
@@ -344,6 +443,31 @@ if (!canvas) {
 
       canvas.addEventListener('pointerdown', (e) => {
         const world = viewToWorld(screenToView(e.clientX, e.clientY));
+
+        // Hit test movers in screen space
+        let hitIdx = -1;
+        for (let i = 0; i < movers.length; i++) {
+          const screen = movers[i].screen;
+          if (!screen) continue;
+          const dx = e.clientX - screen.x;
+          const dy = e.clientY - screen.y;
+          if (Math.hypot(dx, dy) <= HIT_RADIUS) {
+            hitIdx = i;
+            break;
+          }
+        }
+
+        if (hitIdx >= 0) {
+          editor.active = hitIdx;
+          const mover = movers[hitIdx];
+          editor.colorInput.value = colorToHex(mover.color);
+          editor.freqInput.value = mover.freq;
+          editor.phaseInput.value = mover.phase;
+          editor.panel.style.display = 'block';
+          canvas.setPointerCapture(e.pointerId);
+          return;
+        }
+
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, world });
         canvas.setPointerCapture(e.pointerId);
         updateTransformFromPointers();
@@ -364,6 +488,29 @@ if (!canvas) {
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
       canvas.addEventListener('pointercancel', (e) => removePointer(e.pointerId));
+
+      editor.colorInput.addEventListener('input', () => {
+        if (editor.active === null) return;
+        const mover = movers[editor.active];
+        mover.color = hexToColor(editor.colorInput.value);
+      });
+
+      editor.freqInput.addEventListener('input', () => {
+        if (editor.active === null) return;
+        const mover = movers[editor.active];
+        mover.freq = parseFloat(editor.freqInput.value) || mover.freq;
+      });
+
+      editor.phaseInput.addEventListener('input', () => {
+        if (editor.active === null) return;
+        const mover = movers[editor.active];
+        mover.phase = parseFloat(editor.phaseInput.value) || mover.phase;
+      });
+
+      editor.closeBtn.addEventListener('click', () => {
+        editor.active = null;
+        editor.panel.style.display = 'none';
+      });
 
       const render = () => {
         const t = (performance.now() - startTime) * 0.001;
@@ -389,17 +536,20 @@ if (!canvas) {
 
         gl.uniform4fv(uniColor, POINT_COLOR);
         gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
-        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
         gl.drawArrays(gl.POINTS, 0, positions.length / 2);
 
         movers.forEach((mover, idx) => {
           const pos = evalMover(mover, t);
           updateMoverTrail(mover, pos);
+          movers[idx].screen = worldToScreen(pos);
 
           const count = mover.trail.length;
-          if (!mover.flat || mover.flat.length < count * 2) {
-            mover.flat = new Float32Array(count * 2);
+          if (!mover.flat) {
+            mover.flat = new Float32Array(TRAIL_LENGTH * 2);
+          }
+          const required = count * 2;
+          if (required > mover.flat.length) {
+            mover.flat = new Float32Array(Math.max(required, TRAIL_LENGTH * 2));
           }
           for (let i = 0; i < count; i++) {
             const idx2 = i * 2;
@@ -411,7 +561,8 @@ if (!canvas) {
           if (count >= 2) {
             gl.useProgram(lineProgram);
             gl.uniformMatrix3fv(lineUniTransform, false, matrixArr);
-            gl.uniform4fv(lineUniColor, mover.trailColor);
+            const trailColor = trailColorFromHead(mover.color);
+            gl.uniform4fv(lineUniColor, trailColor);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
             gl.bufferData(gl.ARRAY_BUFFER, slice, gl.DYNAMIC_DRAW);
             gl.enableVertexAttribArray(lineAttribPosition);
@@ -428,6 +579,15 @@ if (!canvas) {
             gl.drawArrays(gl.POINTS, count - 1, 1);
           }
         });
+
+        if (editor.active !== null) {
+          const mover = movers[editor.active];
+          const screenPos = mover.screen;
+          if (screenPos) {
+            editor.panel.style.left = `${screenPos.x}px`;
+            editor.panel.style.top = `${screenPos.y}px`;
+          }
+        }
 
         requestAnimationFrame(render);
       };
