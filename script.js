@@ -15,7 +15,7 @@ const DET_EPS = 1e-8;
 const TRAIL_LENGTH = 400;
 const HEAD_POINT_SIZE = 8;
 const MOVER_X_OFFSET = -300;
-const HIT_RADIUS = 18;
+const HIT_RADIUS = 180;
 
 const identityTransform = () => ({
   m00: 1, m01: 0,
