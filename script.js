@@ -2,7 +2,12 @@ const canvas = document.getElementById('glCanvas');
 const gl = canvas.getContext('webgl');
 
 if (!gl) {
-  document.body.innerHTML = '<p style="color:white;text-align:center;margin-top:20px">This browser does not support WebGL 1.</p>';
+  const message = document.createElement('p');
+  message.textContent = 'This browser does not support WebGL 1.';
+  message.style.color = 'white';
+  message.style.textAlign = 'center';
+  message.style.marginTop = '20px';
+  document.body.replaceChildren(message);
 } else {
   const resizeCanvas = () => {
     const dpr = window.devicePixelRatio || 1;
@@ -31,6 +36,5 @@ if (!gl) {
     requestAnimationFrame(render);
   };
 
-  window.addEventListener('resize', resizeCanvas);
   requestAnimationFrame(render);
 }
