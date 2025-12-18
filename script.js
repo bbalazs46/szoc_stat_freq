@@ -174,7 +174,7 @@ if (!canvas) {
 
       void main() {
         vec2 frag = gl_FragCoord.xy;
-        vec2 view = vec2(frag.x - u_resolution.x * 0.5, u_resolution.y * 0.5 - frag.y);
+        vec2 view = vec2(frag.x - u_resolution.x * 0.5, frag.y - u_resolution.y * 0.5);
         vec3 world3 = u_invTransform * vec3(view, 1.0);
         vec2 world = world3.xy;
 
