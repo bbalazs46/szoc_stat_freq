@@ -1,5 +1,11 @@
 const canvas = document.getElementById('glCanvas');
 
+const DPR_FALLBACK = 1;
+const BASE_COLOR = 0.2;
+const COLOR_AMPLITUDE = 0.3;
+const COLOR_PHASE_G = 2.0;
+const COLOR_PHASE_B = 4.0;
+
 const displayMessage = (text) => {
   const message = document.createElement('p');
   message.textContent = text;
@@ -18,7 +24,7 @@ if (!canvas) {
     displayMessage('This browser does not support WebGL 1.');
   } else {
     const resizeCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = window.devicePixelRatio || DPR_FALLBACK;
       const displayWidth = Math.floor(canvas.clientWidth * dpr);
       const displayHeight = Math.floor(canvas.clientHeight * dpr);
 
@@ -31,9 +37,9 @@ if (!canvas) {
 
     const render = (time) => {
       const t = time * 0.001;
-      const r = 0.2 + 0.3 * Math.sin(t);
-      const g = 0.2 + 0.3 * Math.sin(t + 2.0);
-      const b = 0.3 + 0.3 * Math.sin(t + 4.0);
+      const r = BASE_COLOR + COLOR_AMPLITUDE * Math.sin(t);
+      const g = BASE_COLOR + COLOR_AMPLITUDE * Math.sin(t + COLOR_PHASE_G);
+      const b = BASE_COLOR + COLOR_AMPLITUDE * Math.sin(t + COLOR_PHASE_B);
 
       gl.clearColor(r, g, b, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
