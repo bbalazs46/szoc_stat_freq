@@ -11,8 +11,11 @@ const SIZE_FALLOFF = 0.0004;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const EPS = 1e-4;
+const DET_EPS = 1e-8;
 const TRAIL_LENGTH = 400;
 const HEAD_POINT_SIZE = 8;
+const TRAIL_POINT_SIZE = 6;
+const MOVER_X_OFFSET = -300;
 
 const identityTransform = () => ({
   m00: 1, m01: 0,
@@ -27,7 +30,7 @@ const transformPoint = (t, p) => ({
 
 const invertTransform = (t) => {
   const det = t.m00 * t.m11 - t.m01 * t.m10;
-  if (Math.abs(det) < 1e-8) {
+  if (Math.abs(det) < DET_EPS) {
     return identityTransform();
   }
   const invDet = 1 / det;
@@ -284,7 +287,7 @@ if (!canvas) {
       };
 
       const evalMover = (mover, t) => ({
-        x: (t * mover.speed) - 300,
+        x: (t * mover.speed) + MOVER_X_OFFSET,
         y: mover.amp * Math.sin(t * mover.freq + mover.phase)
       });
 
@@ -364,7 +367,7 @@ if (!canvas) {
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(trailFlat), gl.DYNAMIC_DRAW);
             gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
             gl.uniform4fv(uniColor, mover.trailColor);
-            gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
+            gl.uniform1f(uniPointSize, TRAIL_POINT_SIZE);
             gl.drawArrays(gl.LINE_STRIP, 0, trailFlat.length / 2);
           }
 
