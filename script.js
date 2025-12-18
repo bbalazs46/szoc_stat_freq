@@ -13,9 +13,9 @@ const EPS = 1e-4;
 const DET_EPS = 1e-8;
 const TRAIL_DURATION = 5.0;
 const TRAIL_SAMPLES = 120;
-const HEAD_POINT_SIZE = 8;
+const HEAD_POINT_SIZE = 24;
 const MOVER_X_OFFSET = -300;
-const HIT_RADIUS = 18;
+const HIT_RADIUS = 50;
 const WARP_LERP = 0.1;
 
 const identityTransform = () => ({
