@@ -1,90 +1,33 @@
+import {
+  DPR_FALLBACK,
+  BG_COLOR,
+  POINT_COLOR,
+  GRID_SPACING,
+  BASE_POINT_SIZE,
+  MIN_POINT_SIZE,
+  SIZE_FALLOFF,
+  EPS,
+  TRAIL_DURATION,
+  TRAIL_SAMPLES,
+  HEAD_POINT_SIZE,
+  HIT_RADIUS,
+  HIT_EXTRA
+} from './constants.js';
+import {
+  identityTransform,
+  transformPoint,
+  invertTransform,
+  effectiveScale,
+  colorToHex,
+  hexToColor,
+  trailColorFromHead,
+  displayMessage
+} from './utils.js';
+import { createPrograms } from './shaders.js';
+import { createEditor } from './editor.js';
+import { createMovers, evalMover } from './movers.js';
+
 const canvas = document.getElementById('glCanvas');
-
-const DPR_FALLBACK = 1;
-const BG_COLOR = [0.9, 0.9, 0.9, 1];
-const POINT_COLOR = [1, 1, 1, 1];
-const GRID_SPACING = 48;
-const BASE_POINT_SIZE = 10;
-const MIN_POINT_SIZE = 1.5;
-const SIZE_FALLOFF = 0.0004;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
-const EPS = 1e-4;
-const DET_EPS = 1e-8;
-const TRAIL_DURATION = 5.0;
-const TRAIL_SAMPLES = 120;
-const HEAD_POINT_SIZE = 24;
-const MOVER_X_OFFSET = -300;
-const HIT_RADIUS = 50;
-const WARP_LERP = 0.1;
-const HIT_EXTRA = 8;
-
-const identityTransform = () => ({
-  m00: 1, m01: 0,
-  m10: 0, m11: 1,
-  tx: 0, ty: 0
-});
-
-const transformPoint = (t, p) => ({
-  x: t.m00 * p.x + t.m01 * p.y + t.tx,
-  y: t.m10 * p.x + t.m11 * p.y + t.ty
-});
-
-const invertTransform = (t) => {
-  const det = t.m00 * t.m11 - t.m01 * t.m10;
-  if (Math.abs(det) < DET_EPS) {
-    return identityTransform();
-  }
-  const invDet = 1 / det;
-  const m00 = t.m11 * invDet;
-  const m01 = -t.m01 * invDet;
-  const m10 = -t.m10 * invDet;
-  const m11 = t.m00 * invDet;
-  return {
-    m00,
-    m01,
-    m10,
-    m11,
-    tx: -(m00 * t.tx + m01 * t.ty),
-    ty: -(m10 * t.tx + m11 * t.ty)
-  };
-};
-
-const effectiveScale = (t) => {
-  const sx = Math.hypot(t.m00, t.m10);
-  const sy = Math.hypot(t.m01, t.m11);
-  return 0.5 * (sx + sy);
-};
-
-const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
-
-const colorToHex = (c) => {
-  const toByte = (v) => Math.round(clamp(v, 0, 1) * 255);
-  const [r, g, b] = c;
-  return `#${[r, g, b].map(toByte).map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-};
-
-const hexToColor = (hex) => {
-  const clean = hex.replace('#', '');
-  const num = parseInt(clean, 16);
-  return [
-    ((num >> 16) & 0xff) / 255,
-    ((num >> 8) & 0xff) / 255,
-    (num & 0xff) / 255,
-    1
-  ];
-};
-
-const trailColorFromHead = (color) => [color[0], color[1], color[2], 0.5];
-
-const displayMessage = (text) => {
-  const message = document.createElement('p');
-  message.textContent = text;
-  message.style.color = '#222';
-  message.style.textAlign = 'center';
-  message.style.marginTop = '20px';
-  document.body.replaceChildren(message);
-};
 
 if (!canvas) {
   displayMessage('Canvas element not found.');
@@ -94,144 +37,11 @@ if (!canvas) {
   if (!gl) {
     displayMessage('This browser does not support WebGL 1.');
   } else {
-    const vertexSource = `
-      attribute vec2 a_position;
-      uniform vec2 u_resolution;
-      uniform mat3 u_transform;
-      uniform vec2 u_cameraWorld;
-      uniform float u_zoom;
-      uniform float u_pointSize;
-      uniform float u_sizeFalloff;
-      uniform float u_minPointSize;
-
-      void main() {
-        vec3 transformed = u_transform * vec3(a_position, 1.0);
-        vec2 view = transformed.xy;
-        vec2 clip = view / (u_resolution * 0.5);
-        gl_Position = vec4(clip, 0.0, 1.0);
-        float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(a_position - u_cameraWorld));
-        gl_PointSize = max(u_minPointSize, size);
-      }
-    `;
-
-    const fragmentSource = `
-      precision mediump float;
-      uniform vec4 u_color;
-
-      void main() {
-        vec2 coord = gl_PointCoord - 0.5;
-        float dist = length(coord);
-        if (dist > 0.5) {
-          discard;
-        }
-        gl_FragColor = u_color;
-      }
-    `;
-
-    const lineVertexSource = `
-      attribute vec2 a_position;
-      uniform vec2 u_resolution;
-      uniform mat3 u_transform;
-
-      void main() {
-        vec3 transformed = u_transform * vec3(a_position, 1.0);
-        vec2 clip = transformed.xy / (u_resolution * 0.5);
-        gl_Position = vec4(clip, 0.0, 1.0);
-      }
-    `;
-
-    const lineFragmentSource = `
-      precision mediump float;
-      uniform vec4 u_color;
-
-      void main() {
-        gl_FragColor = u_color;
-      }
-    `;
-
-    const bgVertexSource = `
-      attribute vec2 a_position;
-      void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-      }
-    `;
-
-    const bgFragmentSource = `
-      precision mediump float;
-      uniform vec2 u_resolution;
-      uniform mat3 u_invTransform;
-      uniform mat2 u_warp;
-      uniform float u_gridSpacing;
-      uniform float u_verticalSpacing;
-      uniform float u_halfSpacing;
-      uniform float u_baseSize;
-      uniform float u_sizeFalloff;
-      uniform float u_zoom;
-      uniform vec2 u_cameraWorld;
-      uniform vec4 u_color;
-
-      float roundf(float v) { return floor(v + 0.5); }
-
-      void main() {
-        vec2 frag = gl_FragCoord.xy;
-        vec2 view = vec2(frag.x - u_resolution.x * 0.5, frag.y - u_resolution.y * 0.5);
-        vec3 world3 = u_invTransform * vec3(view, 1.0);
-        vec2 world = world3.xy;
-
-        float row = roundf(world.y / u_verticalSpacing);
-        float offset = mod(row, 2.0) * u_halfSpacing;
-        float col = roundf((world.x - offset) / u_gridSpacing);
-        vec2 center = vec2(col * u_gridSpacing + offset, row * u_verticalSpacing);
-
-        vec2 local = world - center;
-        vec2 warped = u_warp * local;
-
-        float radius = u_baseSize * u_zoom / (1.0 + u_sizeFalloff * length(center - u_cameraWorld));
-        float d = length(warped);
-        if (d > radius) discard;
-
-        gl_FragColor = u_color;
-      }
-    `;
-
-    const compileShader = (type, source) => {
-      const shader = gl.createShader(type);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error(gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-      }
-      return shader;
-    };
-
-    const createProgram = (vSrc, fSrc) => {
-      const vShader = compileShader(gl.VERTEX_SHADER, vSrc);
-      const fShader = compileShader(gl.FRAGMENT_SHADER, fSrc);
-      if (!vShader || !fShader) return null;
-      const prog = gl.createProgram();
-      gl.attachShader(prog, vShader);
-      gl.attachShader(prog, fShader);
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-        console.error(gl.getProgramInfoLog(prog));
-        return null;
-      }
-      gl.deleteShader(vShader);
-      gl.deleteShader(fShader);
-      return prog;
-    };
-
-    const program = createProgram(vertexSource, fragmentSource);
-    const lineProgram = createProgram(lineVertexSource, lineFragmentSource);
-    const bgProgram = createProgram(bgVertexSource, bgFragmentSource);
+    const { program, lineProgram, bgProgram } = createPrograms(gl);
 
     if (!program || !lineProgram || !bgProgram) {
       displayMessage('Shader compilation failed.');
     } else {
-      gl.useProgram(program);
-
       const attribPosition = gl.getAttribLocation(program, 'a_position');
       const uniResolution = gl.getUniformLocation(program, 'u_resolution');
       const uniTransform = gl.getUniformLocation(program, 'u_transform');
@@ -293,85 +103,10 @@ if (!canvas) {
 
       const pointers = new Map();
       const startTime = performance.now();
-      const editor = (() => {
-        const panel = document.createElement('div');
-        panel.style.position = 'absolute';
-        panel.style.padding = '8px';
-        panel.style.background = '#fff';
-        panel.style.border = '1px solid #ccc';
-        panel.style.borderRadius = '6px';
-        panel.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-        panel.style.minWidth = '180px';
-        panel.style.fontFamily = 'sans-serif';
-        panel.style.fontSize = '13px';
-        panel.style.display = 'none';
-        panel.style.pointerEvents = 'auto';
-        panel.style.userSelect = 'none';
-        panel.style.transform = 'translate(-50%, -100%)';
+      const editor = createEditor();
 
-        const colorLabel = document.createElement('label');
-        colorLabel.textContent = 'Color: ';
-        const colorInput = document.createElement('input');
-        colorInput.type = 'color';
-        colorInput.style.marginBottom = '6px';
-        colorInput.style.width = '70px';
-        colorLabel.appendChild(colorInput);
-
-        const freqLabel = document.createElement('label');
-        freqLabel.textContent = 'Freq: ';
-        const freqInput = document.createElement('input');
-        freqInput.type = 'number';
-        freqInput.step = '0.1';
-        freqInput.style.width = '80px';
-        freqInput.style.marginBottom = '6px';
-        freqLabel.appendChild(freqInput);
-
-        const phaseLabel = document.createElement('label');
-        phaseLabel.textContent = 'Phase: ';
-        const phaseInput = document.createElement('input');
-        phaseInput.type = 'number';
-        phaseInput.step = '0.1';
-        phaseInput.style.width = '80px';
-        phaseLabel.appendChild(phaseInput);
-
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close';
-        closeBtn.style.marginTop = '6px';
-
-        const layout = document.createElement('div');
-        layout.style.display = 'grid';
-        layout.style.gridTemplateColumns = 'auto 1fr';
-        layout.style.gridRowGap = '6px';
-        layout.style.columnGap = '6px';
-
-        layout.appendChild(colorLabel);
-        layout.appendChild(document.createElement('div'));
-        layout.appendChild(freqLabel);
-        layout.appendChild(document.createElement('div'));
-        layout.appendChild(phaseLabel);
-        layout.appendChild(document.createElement('div'));
-        layout.appendChild(closeBtn);
-
-        panel.appendChild(layout);
-        document.body.appendChild(panel);
-
-        return {
-          panel,
-          colorInput,
-          freqInput,
-          phaseInput,
-          closeBtn,
-          active: null
-        };
-      })();
-
-      const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [5, 0.1, 0.1, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.1, 0.3, 0.5, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.05, 0.45, 0.25, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) }
-      ];
+      const movers = createMovers(TRAIL_SAMPLES);
       const moverScreens = new Array(movers.length).fill(null);
-
       const moverBuffers = movers.map(() => gl.createBuffer());
 
       let canvasDirty = true;
@@ -484,15 +219,9 @@ if (!canvas) {
         }
       };
 
-      const evalMover = (mover, t) => ({
-        x: (t * mover.speed) + MOVER_X_OFFSET,
-        y: mover.amp * Math.sin(t * mover.freq + mover.phase)
-      });
-
       canvas.addEventListener('pointerdown', (e) => {
         const world = viewToWorld(screenToView(e.clientX, e.clientY));
 
-        // Hit test movers in screen space
         let hitIdx = -1;
         for (let i = 0; i < movers.length; i++) {
           const screen = moverScreens[i];
@@ -509,9 +238,7 @@ if (!canvas) {
         if (hitIdx >= 0) {
           editor.active = hitIdx;
           const mover = movers[hitIdx];
-          editor.colorInput.value = colorToHex(mover.color);
-          editor.freqInput.value = mover.freq;
-          editor.phaseInput.value = mover.phase;
+          editor.setFromMover(mover);
           editor.panel.style.display = 'block';
           canvas.setPointerCapture(e.pointerId);
           return;
@@ -574,7 +301,6 @@ if (!canvas) {
           tf.tx, tf.ty, 1
         ]);
         const cameraWorld = viewToWorld({ x: 0, y: 0 });
-        const zoomVal = effectiveScale(tf);
         const invTf = invertTransform(state.transform);
         const invArr = new Float32Array([
           invTf.m00, invTf.m10, 0,
@@ -605,6 +331,7 @@ if (!canvas) {
         gl.uniform1f(bgUniHalfSpacing, GRID_SPACING * 0.5);
         gl.uniform1f(bgUniBaseSize, BASE_POINT_SIZE);
         gl.uniform1f(bgUniSizeFalloff, SIZE_FALLOFF);
+        const zoomVal = effectiveScale(tf);
         gl.uniform1f(bgUniZoom, zoomVal);
         gl.uniform2f(bgUniCameraWorld, cameraWorld.x, cameraWorld.y);
         gl.uniform4fv(bgUniColor, POINT_COLOR);
@@ -612,7 +339,7 @@ if (!canvas) {
 
         gl.useProgram(program);
         gl.uniformMatrix3fv(uniTransform, false, matrixArr);
-        gl.uniform1f(uniZoom, effectiveScale(tf));
+        gl.uniform1f(uniZoom, zoomVal);
         gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
 
         movers.forEach((mover, idx) => {
