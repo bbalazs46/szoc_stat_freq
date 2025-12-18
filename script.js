@@ -345,12 +345,9 @@ if (!canvas) {
           invTf.tx, invTf.ty, 1
         ]);
 
-        const lin = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
-        state.warp = { ...lin };
-        state.prevLinear = { ...lin };
         const warpArr = new Float32Array([
-          state.warp.m00, state.warp.m10,
-          state.warp.m01, state.warp.m11
+          1, 0,
+          0, 1
         ]);
 
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
