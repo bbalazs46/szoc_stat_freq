@@ -103,6 +103,7 @@ if (!canvas) {
 
       const pointers = new Map();
       const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
+      let skipOnce = false;
       const startTime = performance.now();
       const editor = createEditor();
 
@@ -164,6 +165,10 @@ if (!canvas) {
       };
 
       const updateTransformFromPointers = () => {
+        if (skipOnce) {
+          skipOnce = false;
+          return;
+        }
         const pointerArray = Array.from(pointers.values());
         const count = pointerArray.length;
         if (count === 0) return;
@@ -271,6 +276,7 @@ if (!canvas) {
         }
 
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, id: e.pointerId, world });
+        skipOnce = true;
         resetGesture();
         canvas.setPointerCapture(e.pointerId);
         updateTransformFromPointers();
@@ -287,6 +293,7 @@ if (!canvas) {
       const removePointer = (id) => {
         pointers.delete(id);
         if (pointers.size > 0) {
+          skipOnce = true;
           resetGesture();
           updateTransformFromPointers();
         }
