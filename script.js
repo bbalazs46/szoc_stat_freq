@@ -203,6 +203,7 @@ if (!canvas) {
             { x: b.x, y: b.y }
           );
         }
+        scheduleRender();
       });
 
       const removePointer = (id) => {
@@ -211,23 +212,31 @@ if (!canvas) {
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
       canvas.addEventListener('pointercancel', (e) => removePointer(e.pointerId));
-      canvas.addEventListener('pointerout', (e) => removePointer(e.pointerId));
-      canvas.addEventListener('pointerleave', (e) => removePointer(e.pointerId));
+
+      let renderRequested = false;
+      const scheduleRender = () => {
+        if (!renderRequested) {
+          renderRequested = true;
+          requestAnimationFrame(render);
+        }
+      };
 
       const render = () => {
+        renderRequested = false;
         resizeCanvas();
-        gl.clearColor(...BG_COLOR);
+        gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         gl.uniform2f(uniCamera, state.camera.x, state.camera.y);
         gl.uniform1f(uniZoom, state.zoom);
 
         gl.drawArrays(gl.POINTS, 0, positions.length / 2);
-        requestAnimationFrame(render);
       };
 
       resizeCanvas();
-      requestAnimationFrame(render);
+      scheduleRender();
+
+      window.addEventListener('resize', scheduleRender);
     }
   }
 }
