@@ -288,8 +288,7 @@ if (!canvas) {
       const state = {
         transform: identityTransform(),
         warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
-        prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 },
-        lockTransform: false
+        prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
 
       const pointers = new Map();
@@ -416,7 +415,6 @@ if (!canvas) {
       };
 
       const updateTransformFromPointers = () => {
-        if (state.lockTransform) return;
         const pointerArray = Array.from(pointers.values());
         const count = pointerArray.length;
         if (count === 0) return;
@@ -520,9 +518,6 @@ if (!canvas) {
         }
 
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, world });
-        if (pointers.size === 1) {
-          state.lockTransform = false;
-        }
         canvas.setPointerCapture(e.pointerId);
         updateTransformFromPointers();
       });
@@ -536,14 +531,8 @@ if (!canvas) {
       });
 
       const removePointer = (id) => {
-        const prevCount = pointers.size;
         pointers.delete(id);
-        if (prevCount >= 3 && pointers.size < 3) {
-          state.lockTransform = true;
-        }
-        if (pointers.size === 0) {
-          state.lockTransform = false;
-        }
+        updateTransformFromPointers();
       };
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
