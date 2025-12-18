@@ -1,7 +1,7 @@
 const canvas = document.getElementById('glCanvas');
 
 const DPR_FALLBACK = 1;
-const BG_COLOR = [.9, 0.9, 0.9, 1];
+const BG_COLOR = [0.9, 0.9, 0.9, 1];
 const POINT_COLOR = [1, 1, 1, 1];
 const GRID_SPACING = 48;
 const GRID_RANGE = 120;
@@ -219,9 +219,9 @@ if (!canvas) {
       const startTime = performance.now();
 
       const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trailColor: [1, 0.2, 0.2, 0.5], trail: [] },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trailColor: [0.2, 0.6, 1, 0.5], trail: [] },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trailColor: [0.1, 0.9, 0.5, 0.5], trail: [] }
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trailColor: [1, 0.2, 0.2, 0.5], trail: [], flat: null },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trailColor: [0.2, 0.6, 1, 0.5], trail: [], flat: null },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trailColor: [0.1, 0.9, 0.5, 0.5], trail: [], flat: null }
       ];
 
       const moverBuffers = movers.map(() => gl.createBuffer());
@@ -381,6 +381,8 @@ if (!canvas) {
         gl.uniformMatrix3fv(uniTransform, false, matrixArr);
         gl.uniform1f(uniZoom, effectiveScale(tf));
         gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
 
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -395,30 +397,35 @@ if (!canvas) {
           const pos = evalMover(mover, t);
           updateMoverTrail(mover, pos);
 
-          const trailFlat = [];
-          for (let i = 0; i < mover.trail.length; i++) {
-            trailFlat.push(mover.trail[i].x, mover.trail[i].y);
+          const count = mover.trail.length;
+          if (!mover.flat || mover.flat.length < count * 2) {
+            mover.flat = new Float32Array(count * 2);
           }
+          for (let i = 0; i < count; i++) {
+            const idx2 = i * 2;
+            mover.flat[idx2] = mover.trail[i].x;
+            mover.flat[idx2 + 1] = mover.trail[i].y;
+          }
+          const slice = mover.flat.subarray(0, count * 2);
 
-          if (trailFlat.length >= 4) {
+          if (count >= 2) {
             gl.useProgram(lineProgram);
             gl.uniformMatrix3fv(lineUniTransform, false, matrixArr);
             gl.uniform4fv(lineUniColor, mover.trailColor);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(trailFlat), gl.DYNAMIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, slice, gl.DYNAMIC_DRAW);
             gl.enableVertexAttribArray(lineAttribPosition);
             gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
-            gl.drawArrays(gl.LINE_STRIP, 0, trailFlat.length / 2);
+            gl.drawArrays(gl.LINE_STRIP, 0, count);
           }
 
-          if (trailFlat.length >= 2) {
+          if (count >= 1) {
             gl.useProgram(program);
-            gl.uniformMatrix3fv(uniTransform, false, matrixArr);
-            gl.uniform1f(uniZoom, effectiveScale(tf));
-            gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
+            gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
+            gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
             gl.uniform1f(uniPointSize, HEAD_POINT_SIZE);
             gl.uniform4fv(uniColor, mover.color);
-            gl.drawArrays(gl.POINTS, trailFlat.length / 2 - 1, 1);
+            gl.drawArrays(gl.POINTS, count - 1, 1);
           }
         });
 
