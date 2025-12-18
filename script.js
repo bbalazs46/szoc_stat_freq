@@ -367,9 +367,9 @@ if (!canvas) {
       })();
 
       const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) }
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [5, 0.1, 0.1, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.1, 0.3, 0.5, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.05, 0.45, 0.25, 1], flat: new Float32Array(TRAIL_SAMPLES * 2) }
       ];
       const moverScreens = new Array(movers.length).fill(null);
 
