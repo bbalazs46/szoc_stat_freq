@@ -6,9 +6,11 @@ const POINT_COLOR = [1, 1, 1, 1];
 const GRID_SPACING = 48;
 const GRID_RANGE = 120;
 const BASE_POINT_SIZE = 10;
+const MIN_POINT_SIZE = 1.5;
 const SIZE_FALLOFF = 0.0004;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
+const EPS = 1e-4;
 
 const displayMessage = (text) => {
   const message = document.createElement('p');
@@ -34,6 +36,7 @@ if (!canvas) {
       uniform float u_zoom;
       uniform float u_pointSize;
       uniform float u_sizeFalloff;
+      const float MIN_POINT_SIZE = ${MIN_POINT_SIZE};
 
       void main() {
         vec2 world = a_position - u_camera;
@@ -41,7 +44,7 @@ if (!canvas) {
         vec2 clip = view / (u_resolution * 0.5);
         gl_Position = vec4(clip, 0.0, 1.0);
         float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(world));
-        gl_PointSize = max(1.5, size);
+        gl_PointSize = max(MIN_POINT_SIZE, size);
       }
     `;
 
@@ -83,6 +86,8 @@ if (!canvas) {
         console.error(gl.getProgramInfoLog(prog));
         return null;
       }
+      gl.deleteShader(vShader);
+      gl.deleteShader(fShader);
       return prog;
     })();
 
@@ -99,22 +104,27 @@ if (!canvas) {
       const uniSizeFalloff = gl.getUniformLocation(program, 'u_sizeFalloff');
       const uniColor = gl.getUniformLocation(program, 'u_color');
 
-      const positions = [];
-      const halfSpacing = GRID_SPACING * 0.5;
-      const verticalSpacing = GRID_SPACING * Math.sqrt(3) * 0.5;
+      const buildPositions = () => {
+        const list = [];
+        const halfSpacing = GRID_SPACING * 0.5;
+        const verticalSpacing = GRID_SPACING * Math.sqrt(3) * 0.5;
 
-      for (let row = -GRID_RANGE; row <= GRID_RANGE; row++) {
-        const y = row * verticalSpacing;
-        const offset = (row & 1) ? halfSpacing : 0;
-        for (let col = -GRID_RANGE; col <= GRID_RANGE; col++) {
-          const x = (col * GRID_SPACING) + offset;
-          positions.push(x, y);
+        for (let row = -GRID_RANGE; row <= GRID_RANGE; row++) {
+          const y = row * verticalSpacing;
+          const offset = (row & 1) ? halfSpacing : 0;
+          for (let col = -GRID_RANGE; col <= GRID_RANGE; col++) {
+            const x = (col * GRID_SPACING) + offset;
+            list.push(x, y);
+          }
         }
-      }
+        return new Float32Array(list);
+      };
+
+      const positions = buildPositions();
 
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(attribPosition);
       gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
 
@@ -128,6 +138,14 @@ if (!canvas) {
       };
 
       const pointers = new Map();
+
+      let renderRequested = false;
+      const scheduleRender = () => {
+        if (!renderRequested) {
+          renderRequested = true;
+          requestAnimationFrame(render);
+        }
+      };
 
       const resizeCanvas = () => {
         const dpr = window.devicePixelRatio || DPR_FALLBACK;
@@ -167,7 +185,7 @@ if (!canvas) {
         const prevDist = Math.hypot(prevA.x - prevB.x, prevA.y - prevB.y);
         const nextDist = Math.hypot(nextA.x - nextB.x, nextA.y - nextB.y);
 
-        if (prevDist === 0) return;
+        if (prevDist < EPS) return;
 
         const zoomFactor = nextDist / prevDist;
         const prevMidWorld = screenToWorld(prevMid.x, prevMid.y);
@@ -212,14 +230,6 @@ if (!canvas) {
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
       canvas.addEventListener('pointercancel', (e) => removePointer(e.pointerId));
-
-      let renderRequested = false;
-      const scheduleRender = () => {
-        if (!renderRequested) {
-          renderRequested = true;
-          requestAnimationFrame(render);
-        }
-      };
 
       const render = () => {
         renderRequested = false;
