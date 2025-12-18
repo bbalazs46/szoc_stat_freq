@@ -77,6 +77,7 @@ if (!canvas) {
       attribute vec2 a_position;
       uniform vec2 u_resolution;
       uniform mat3 u_transform;
+      uniform vec2 u_cameraWorld;
       uniform float u_zoom;
       uniform float u_pointSize;
       uniform float u_sizeFalloff;
@@ -87,7 +88,7 @@ if (!canvas) {
         vec2 view = transformed.xy;
         vec2 clip = view / (u_resolution * 0.5);
         gl_Position = vec4(clip, 0.0, 1.0);
-        float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(a_position));
+        float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(a_position - u_cameraWorld));
         gl_PointSize = max(u_minPointSize, size);
       }
     `;
@@ -106,6 +107,27 @@ if (!canvas) {
       }
     `;
 
+    const lineVertexSource = `
+      attribute vec2 a_position;
+      uniform vec2 u_resolution;
+      uniform mat3 u_transform;
+
+      void main() {
+        vec3 transformed = u_transform * vec3(a_position, 1.0);
+        vec2 clip = transformed.xy / (u_resolution * 0.5);
+        gl_Position = vec4(clip, 0.0, 1.0);
+      }
+    `;
+
+    const lineFragmentSource = `
+      precision mediump float;
+      uniform vec4 u_color;
+
+      void main() {
+        gl_FragColor = u_color;
+      }
+    `;
+
     const compileShader = (type, source) => {
       const shader = gl.createShader(type);
       gl.shaderSource(shader, source);
@@ -118,9 +140,9 @@ if (!canvas) {
       return shader;
     };
 
-    const program = (() => {
-      const vShader = compileShader(gl.VERTEX_SHADER, vertexSource);
-      const fShader = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+    const createProgram = (vSrc, fSrc) => {
+      const vShader = compileShader(gl.VERTEX_SHADER, vSrc);
+      const fShader = compileShader(gl.FRAGMENT_SHADER, fSrc);
       if (!vShader || !fShader) return null;
       const prog = gl.createProgram();
       gl.attachShader(prog, vShader);
@@ -133,9 +155,12 @@ if (!canvas) {
       gl.deleteShader(vShader);
       gl.deleteShader(fShader);
       return prog;
-    })();
+    };
 
-    if (!program) {
+    const program = createProgram(vertexSource, fragmentSource);
+    const lineProgram = createProgram(lineVertexSource, lineFragmentSource);
+
+    if (!program || !lineProgram) {
       displayMessage('Shader compilation failed.');
     } else {
       gl.useProgram(program);
@@ -143,11 +168,17 @@ if (!canvas) {
       const attribPosition = gl.getAttribLocation(program, 'a_position');
       const uniResolution = gl.getUniformLocation(program, 'u_resolution');
       const uniTransform = gl.getUniformLocation(program, 'u_transform');
+      const uniCameraWorld = gl.getUniformLocation(program, 'u_cameraWorld');
       const uniZoom = gl.getUniformLocation(program, 'u_zoom');
       const uniPointSize = gl.getUniformLocation(program, 'u_pointSize');
       const uniSizeFalloff = gl.getUniformLocation(program, 'u_sizeFalloff');
       const uniMinPointSize = gl.getUniformLocation(program, 'u_minPointSize');
       const uniColor = gl.getUniformLocation(program, 'u_color');
+
+      const lineAttribPosition = gl.getAttribLocation(lineProgram, 'a_position');
+      const lineUniResolution = gl.getUniformLocation(lineProgram, 'u_resolution');
+      const lineUniTransform = gl.getUniformLocation(lineProgram, 'u_transform');
+      const lineUniColor = gl.getUniformLocation(lineProgram, 'u_color');
 
       const buildPositions = () => {
         const list = [];
@@ -172,6 +203,11 @@ if (!canvas) {
       gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
       gl.enableVertexAttribArray(attribPosition);
       gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
+      gl.useProgram(lineProgram);
+      gl.enableVertexAttribArray(lineAttribPosition);
+      gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+      gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
+      gl.useProgram(program);
 
       gl.uniform4fv(uniColor, POINT_COLOR);
       gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
@@ -203,7 +239,11 @@ if (!canvas) {
           canvas.height = displayHeight;
         }
         gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.useProgram(program);
         gl.uniform2f(uniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.useProgram(lineProgram);
+        gl.uniform2f(lineUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.useProgram(program);
       };
 
       const screenToView = (x, y) => ({
@@ -261,7 +301,7 @@ if (!canvas) {
           const lenDw = Math.hypot(dw.x, dw.y);
           const lenDv = Math.hypot(dv.x, dv.y);
           if (lenDw < EPS || lenDv < EPS) return;
-          const baseScale = clamp(lenDv / lenDw, MIN_ZOOM, MAX_ZOOM);
+          const baseScale = lenDv / lenDw;
           const angle = Math.atan2(dv.y, dv.x) - Math.atan2(dw.y, dw.x);
           const c = Math.cos(angle);
           const s = Math.sin(angle);
@@ -333,16 +373,17 @@ if (!canvas) {
         resizeCanvas();
 
         const tf = state.transform;
-        gl.uniformMatrix3fv(
-          uniTransform,
-          false,
-          new Float32Array([
-            tf.m00, tf.m10, 0,
-            tf.m01, tf.m11, 0,
-            tf.tx, tf.ty, 1
-          ])
-        );
+        const matrixArr = new Float32Array([
+          tf.m00, tf.m10, 0,
+          tf.m01, tf.m11, 0,
+          tf.tx, tf.ty, 1
+        ]);
+        const cameraWorld = viewToWorld({ x: 0, y: 0 });
+
+        gl.useProgram(program);
+        gl.uniformMatrix3fv(uniTransform, false, matrixArr);
         gl.uniform1f(uniZoom, effectiveScale(tf));
+        gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
 
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -363,15 +404,20 @@ if (!canvas) {
           }
 
           if (trailFlat.length >= 4) {
+            gl.useProgram(lineProgram);
+            gl.uniformMatrix3fv(lineUniTransform, false, matrixArr);
+            gl.uniform4fv(lineUniColor, mover.trailColor);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
             gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(trailFlat), gl.DYNAMIC_DRAW);
-            gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
-            gl.uniform4fv(uniColor, mover.trailColor);
-            gl.uniform1f(uniPointSize, TRAIL_POINT_SIZE);
+            gl.vertexAttribPointer(lineAttribPosition, 2, gl.FLOAT, false, 0, 0);
             gl.drawArrays(gl.LINE_STRIP, 0, trailFlat.length / 2);
           }
 
           if (trailFlat.length >= 2) {
+            gl.useProgram(program);
+            gl.uniformMatrix3fv(uniTransform, false, matrixArr);
+            gl.uniform1f(uniZoom, effectiveScale(tf));
+            gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
             gl.uniform1f(uniPointSize, HEAD_POINT_SIZE);
             gl.uniform4fv(uniColor, mover.color);
             gl.drawArrays(gl.POINTS, trailFlat.length / 2 - 1, 1);
