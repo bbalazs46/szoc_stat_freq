@@ -11,6 +11,8 @@ const SIZE_FALLOFF = 0.0004;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const EPS = 1e-4;
+const TRAIL_LENGTH = 400;
+const HEAD_POINT_SIZE = 8;
 
 const displayMessage = (text) => {
   const message = document.createElement('p');
@@ -36,7 +38,7 @@ if (!canvas) {
       uniform float u_zoom;
       uniform float u_pointSize;
       uniform float u_sizeFalloff;
-      const float MIN_POINT_SIZE = ${MIN_POINT_SIZE};
+      uniform float u_minPointSize;
 
       void main() {
         vec2 world = a_position - u_camera;
@@ -44,7 +46,7 @@ if (!canvas) {
         vec2 clip = view / (u_resolution * 0.5);
         gl_Position = vec4(clip, 0.0, 1.0);
         float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(world));
-        gl_PointSize = max(MIN_POINT_SIZE, size);
+        gl_PointSize = max(u_minPointSize, size);
       }
     `;
 
@@ -102,6 +104,7 @@ if (!canvas) {
       const uniZoom = gl.getUniformLocation(program, 'u_zoom');
       const uniPointSize = gl.getUniformLocation(program, 'u_pointSize');
       const uniSizeFalloff = gl.getUniformLocation(program, 'u_sizeFalloff');
+      const uniMinPointSize = gl.getUniformLocation(program, 'u_minPointSize');
       const uniColor = gl.getUniformLocation(program, 'u_color');
 
       const buildPositions = () => {
@@ -131,6 +134,7 @@ if (!canvas) {
       gl.uniform4fv(uniColor, POINT_COLOR);
       gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
       gl.uniform1f(uniSizeFalloff, SIZE_FALLOFF);
+      gl.uniform1f(uniMinPointSize, MIN_POINT_SIZE);
 
       const state = {
         zoom: 1,
@@ -138,6 +142,15 @@ if (!canvas) {
       };
 
       const pointers = new Map();
+      const startTime = performance.now();
+
+      const movers = [
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trailColor: [1, 0.2, 0.2, 0.5], trail: [] },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trailColor: [0.2, 0.6, 1, 0.5], trail: [] },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trailColor: [0.1, 0.9, 0.5, 0.5], trail: [] }
+      ];
+
+      const moverBuffers = movers.map(() => gl.createBuffer());
 
       let renderRequested = false;
       const scheduleRender = () => {
@@ -196,6 +209,25 @@ if (!canvas) {
         state.camera.y = prevMidWorld.y - (canvas.clientHeight * 0.5 - nextMid.y) / state.zoom;
       };
 
+      const evalMover = (mover, t) => ({
+        x: (t * mover.speed) - 300,
+        y: mover.amp * Math.sin(t * mover.freq + mover.phase)
+      });
+
+      const updateMoverTrail = (mover, pos) => {
+        mover.trail.push(pos);
+        let distance = 0;
+        for (let i = mover.trail.length - 1; i > 0; i--) {
+          const a = mover.trail[i];
+          const b = mover.trail[i - 1];
+          distance += Math.hypot(a.x - b.x, a.y - b.y);
+          if (distance > TRAIL_LENGTH) {
+            mover.trail.splice(0, i - 1);
+            break;
+          }
+        }
+      };
+
       canvas.addEventListener('pointerdown', (e) => {
         pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, prevX: e.clientX, prevY: e.clientY });
         canvas.setPointerCapture(e.pointerId);
@@ -212,8 +244,9 @@ if (!canvas) {
         if (pointers.size === 1) {
           handleSinglePan({ x: data.prevX, y: data.prevY }, { x: data.x, y: data.y });
         } else if (pointers.size === 2) {
-          const ptrs = Array.from(pointers.values()).slice(0, 2);
-          const [a, b] = ptrs;
+          const iterator = pointers.values();
+          const a = iterator.next().value;
+          const b = iterator.next().value;
           handlePinch(
             { x: a.prevX, y: a.prevY },
             { x: b.prevX, y: b.prevY },
