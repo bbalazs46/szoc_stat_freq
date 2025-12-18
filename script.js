@@ -2,7 +2,7 @@ const canvas = document.getElementById('glCanvas');
 const gl = canvas.getContext('webgl');
 
 if (!gl) {
-  document.body.innerHTML = '<p style="color:white;text-align:center;margin-top:20px">A böngésző nem támogatja a WebGL 1-et.</p>';
+  document.body.innerHTML = '<p style="color:white;text-align:center;margin-top:20px">This browser does not support WebGL 1.</p>';
 } else {
   const resizeCanvas = () => {
     const dpr = window.devicePixelRatio || 1;
