@@ -102,6 +102,7 @@ if (!canvas) {
       };
 
       const pointers = new Map();
+      const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
       const startTime = performance.now();
       const editor = createEditor();
 
@@ -136,10 +137,12 @@ if (!canvas) {
         y: canvas.clientHeight * 0.5 - y
       });
 
-      const viewToWorld = (viewPt) => {
-        const inv = invertTransform(state.transform);
+      const viewToWorldWith = (viewPt, t) => {
+        const inv = invertTransform(t);
         return transformPoint(inv, viewPt);
       };
+
+      const viewToWorld = (viewPt) => viewToWorldWith(viewPt, state.transform);
 
       const worldToScreen = (p) => {
         const view = transformPoint(state.transform, p);
@@ -149,16 +152,34 @@ if (!canvas) {
         };
       };
 
+      const resetGesture = () => {
+        gesture.baseTransform = { ...state.transform };
+        gesture.basePointers = new Map();
+        const invBase = invertTransform(gesture.baseTransform);
+        pointers.forEach((p, id) => {
+          const view = screenToView(p.x, p.y);
+          const world = transformPoint(invBase, view);
+          gesture.basePointers.set(id, { view, world });
+        });
+      };
+
       const updateTransformFromPointers = () => {
         const pointerArray = Array.from(pointers.values());
         const count = pointerArray.length;
         if (count === 0) return;
 
+        const base = gesture.baseTransform;
+        const invBase = invertTransform(base);
+
         if (count >= 3) {
           const [p1, p2, p3] = pointerArray;
-          const w1 = p1.world;
-          const w2 = p2.world;
-          const w3 = p3.world;
+          const b1 = gesture.basePointers.get(p1.id);
+          const b2 = gesture.basePointers.get(p2.id);
+          const b3 = gesture.basePointers.get(p3.id);
+          if (!b1 || !b2 || !b3) return;
+          const w1 = b1.world;
+          const w2 = b2.world;
+          const w3 = b3.world;
           const v1 = screenToView(p1.x, p1.y);
           const v2 = screenToView(p2.x, p2.y);
           const v3 = screenToView(p3.x, p3.y);
@@ -185,8 +206,11 @@ if (!canvas) {
 
         if (count === 2) {
           const [p1, p2] = pointerArray;
-          const w1 = p1.world;
-          const w2 = p2.world;
+          const b1 = gesture.basePointers.get(p1.id);
+          const b2 = gesture.basePointers.get(p2.id);
+          if (!b1 || !b2) return;
+          const w1 = b1.world;
+          const w2 = b2.world;
           const v1 = screenToView(p1.x, p1.y);
           const v2 = screenToView(p2.x, p2.y);
           const dw = { x: w2.x - w1.x, y: w2.y - w1.y };
@@ -210,9 +234,11 @@ if (!canvas) {
 
         if (count === 1) {
           const [p] = pointerArray;
-          const world = p.world;
+          const basePtr = gesture.basePointers.get(p.id);
+          if (!basePtr) return;
+          const world = basePtr.world;
           const view = screenToView(p.x, p.y);
-          const { m00, m01, m10, m11 } = state.transform;
+          const { m00, m01, m10, m11 } = base;
           const tx = view.x - (m00 * world.x + m01 * world.y);
           const ty = view.y - (m10 * world.x + m11 * world.y);
           state.transform = { m00, m01, m10, m11, tx, ty };
@@ -244,7 +270,8 @@ if (!canvas) {
           return;
         }
 
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, world });
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, id: e.pointerId, world });
+        resetGesture();
         canvas.setPointerCapture(e.pointerId);
         updateTransformFromPointers();
       });
@@ -259,7 +286,10 @@ if (!canvas) {
 
       const removePointer = (id) => {
         pointers.delete(id);
-        updateTransformFromPointers();
+        if (pointers.size > 0) {
+          resetGesture();
+          updateTransformFromPointers();
+        }
       };
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
