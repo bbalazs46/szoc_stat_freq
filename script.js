@@ -594,23 +594,8 @@ if (!canvas) {
         ]);
 
         const lin = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
-        const changed =
-          Math.abs(lin.m00 - state.prevLinear.m00) > 1e-6 ||
-          Math.abs(lin.m01 - state.prevLinear.m01) > 1e-6 ||
-          Math.abs(lin.m10 - state.prevLinear.m10) > 1e-6 ||
-          Math.abs(lin.m11 - state.prevLinear.m11) > 1e-6;
-        if (changed) {
-          state.warp = { ...lin };
-          state.prevLinear = { ...lin };
-        }
-
-        const detWarp = lin.m00 * lin.m11 - lin.m01 * lin.m10;
-        const targetScale = Math.sqrt(Math.abs(detWarp));
-        const targetWarp = { m00: targetScale, m01: 0, m10: 0, m11: targetScale };
-        state.warp.m00 += (targetWarp.m00 - state.warp.m00) * WARP_LERP;
-        state.warp.m01 += (targetWarp.m01 - state.warp.m01) * WARP_LERP;
-        state.warp.m10 += (targetWarp.m10 - state.warp.m10) * WARP_LERP;
-        state.warp.m11 += (targetWarp.m11 - state.warp.m11) * WARP_LERP;
+        state.warp = { ...lin };
+        state.prevLinear = { ...lin };
         const warpArr = new Float32Array([
           state.warp.m00, state.warp.m10,
           state.warp.m01, state.warp.m11
