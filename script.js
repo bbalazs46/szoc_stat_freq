@@ -487,7 +487,6 @@ if (!canvas) {
 
       const removePointer = (id) => {
         pointers.delete(id);
-        updateTransformFromPointers();
       };
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
