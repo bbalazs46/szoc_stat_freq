@@ -70,6 +70,14 @@ export const shaderSources = {
     uniform vec2 u_cameraWorld;
     uniform vec4 u_color;
 
+    vec2 rand2(vec2 st) {
+      st = vec2(
+        dot(st, vec2(127.1, 311.7)),
+        dot(st, vec2(269.5, 183.3))
+      );
+      return fract(sin(st) * 43758.5453);
+    }
+
     float roundf(float v) { return floor(v + 0.5); }
 
     void main() {
@@ -78,15 +86,26 @@ export const shaderSources = {
       vec3 world3 = u_invTransform * vec3(view, 1.0);
       vec2 world = world3.xy;
 
-      float row = roundf(world.y / u_verticalSpacing);
-      float offset = mod(row, 2.0) * u_halfSpacing;
-      float col = roundf((world.x - offset) / u_gridSpacing);
-      vec2 center = vec2(col * u_gridSpacing + offset, row * u_verticalSpacing);
+      vec2 cell = floor(world / vec2(u_gridSpacing, u_verticalSpacing));
+      float best = 1e9;
+      vec2 bestCenter = vec2(0.0);
+      for (int dx = -1; dx <= 1; dx++) {
+        for (int dy = -1; dy <= 1; dy++) {
+          vec2 c = cell + vec2(float(dx), float(dy));
+          vec2 jitter = rand2(c);
+          vec2 candidate = (c + jitter) * vec2(u_gridSpacing, u_verticalSpacing);
+          float d = length(world - candidate);
+          if (d < best) {
+            best = d;
+            bestCenter = candidate;
+          }
+        }
+      }
 
-      vec2 local = world - center;
+      vec2 local = world - bestCenter;
       vec2 warped = u_warp * local;
 
-      float radius = u_baseSize * u_zoom / (1.0 + u_sizeFalloff * length(center - u_cameraWorld));
+      float radius = u_baseSize * u_zoom / (1.0 + u_sizeFalloff * length(bestCenter - u_cameraWorld));
       float d = length(warped);
       if (d > radius) discard;
 
