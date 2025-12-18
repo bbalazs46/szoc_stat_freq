@@ -17,6 +17,7 @@ const HEAD_POINT_SIZE = 24;
 const MOVER_X_OFFSET = -300;
 const HIT_RADIUS = 50;
 const WARP_LERP = 0.1;
+const HIT_EXTRA = 8;
 
 const identityTransform = () => ({
   m00: 1, m01: 0,
@@ -498,7 +499,8 @@ if (!canvas) {
           if (!screen) continue;
           const dx = e.clientX - screen.x;
           const dy = e.clientY - screen.y;
-          if (Math.hypot(dx, dy) <= HIT_RADIUS) {
+          const radius = (screen.r || 0) + HIT_EXTRA;
+          if (Math.hypot(dx, dy) <= radius) {
             hitIdx = i;
             break;
           }
@@ -571,6 +573,7 @@ if (!canvas) {
           tf.tx, tf.ty, 1
         ]);
         const cameraWorld = viewToWorld({ x: 0, y: 0 });
+        const zoomVal = effectiveScale(tf);
         const invTf = invertTransform(state.transform);
         const invArr = new Float32Array([
           invTf.m00, invTf.m10, 0,
@@ -616,7 +619,7 @@ if (!canvas) {
         gl.uniform1f(bgUniHalfSpacing, GRID_SPACING * 0.5);
         gl.uniform1f(bgUniBaseSize, BASE_POINT_SIZE);
         gl.uniform1f(bgUniSizeFalloff, SIZE_FALLOFF);
-        gl.uniform1f(bgUniZoom, effectiveScale(tf));
+        gl.uniform1f(bgUniZoom, zoomVal);
         gl.uniform2f(bgUniCameraWorld, cameraWorld.x, cameraWorld.y);
         gl.uniform4fv(bgUniColor, POINT_COLOR);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -628,7 +631,10 @@ if (!canvas) {
 
         movers.forEach((mover, idx) => {
           const pos = evalMover(mover, t);
-          moverScreens[idx] = worldToScreen(pos);
+          const screenPos = worldToScreen(pos);
+          const distCam = Math.hypot(pos.x - cameraWorld.x, pos.y - cameraWorld.y);
+          const sizePx = (HEAD_POINT_SIZE * zoomVal) / (1 + SIZE_FALLOFF * distCam);
+          moverScreens[idx] = { x: screenPos.x, y: screenPos.y, r: sizePx * 0.5 };
 
           const sampleCount = TRAIL_SAMPLES;
           const dt = TRAIL_DURATION / sampleCount;
