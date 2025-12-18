@@ -1,11 +1,11 @@
 const canvas = document.getElementById('glCanvas');
 
 const DPR_FALLBACK = 1;
-const BG_COLOR = [0.6667, 0.6667, 0.6667, 1];
+const BG_COLOR = [.9, 0.9, 0.9, 1];
 const POINT_COLOR = [1, 1, 1, 1];
 const GRID_SPACING = 48;
 const GRID_RANGE = 120;
-const BASE_POINT_SIZE = 20;
+const BASE_POINT_SIZE = 30;
 const MIN_POINT_SIZE = 1.5;
 const SIZE_FALLOFF = 0.0004;
 const MIN_ZOOM = 0.5;
