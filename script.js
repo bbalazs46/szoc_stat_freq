@@ -14,6 +14,45 @@ const EPS = 1e-4;
 const TRAIL_LENGTH = 400;
 const HEAD_POINT_SIZE = 8;
 
+const identityTransform = () => ({
+  m00: 1, m01: 0,
+  m10: 0, m11: 1,
+  tx: 0, ty: 0
+});
+
+const transformPoint = (t, p) => ({
+  x: t.m00 * p.x + t.m01 * p.y + t.tx,
+  y: t.m10 * p.x + t.m11 * p.y + t.ty
+});
+
+const invertTransform = (t) => {
+  const det = t.m00 * t.m11 - t.m01 * t.m10;
+  if (Math.abs(det) < 1e-8) {
+    return identityTransform();
+  }
+  const invDet = 1 / det;
+  const m00 = t.m11 * invDet;
+  const m01 = -t.m01 * invDet;
+  const m10 = -t.m10 * invDet;
+  const m11 = t.m00 * invDet;
+  return {
+    m00,
+    m01,
+    m10,
+    m11,
+    tx: -(m00 * t.tx + m01 * t.ty),
+    ty: -(m10 * t.tx + m11 * t.ty)
+  };
+};
+
+const effectiveScale = (t) => {
+  const sx = Math.hypot(t.m00, t.m10);
+  const sy = Math.hypot(t.m01, t.m11);
+  return 0.5 * (sx + sy);
+};
+
+const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
 const displayMessage = (text) => {
   const message = document.createElement('p');
   message.textContent = text;
@@ -34,18 +73,18 @@ if (!canvas) {
     const vertexSource = `
       attribute vec2 a_position;
       uniform vec2 u_resolution;
-      uniform vec2 u_camera;
+      uniform mat3 u_transform;
       uniform float u_zoom;
       uniform float u_pointSize;
       uniform float u_sizeFalloff;
       uniform float u_minPointSize;
 
       void main() {
-        vec2 world = a_position - u_camera;
-        vec2 view = world * u_zoom;
+        vec3 transformed = u_transform * vec3(a_position, 1.0);
+        vec2 view = transformed.xy;
         vec2 clip = view / (u_resolution * 0.5);
         gl_Position = vec4(clip, 0.0, 1.0);
-        float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(world));
+        float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(a_position));
         gl_PointSize = max(u_minPointSize, size);
       }
     `;
@@ -100,7 +139,7 @@ if (!canvas) {
 
       const attribPosition = gl.getAttribLocation(program, 'a_position');
       const uniResolution = gl.getUniformLocation(program, 'u_resolution');
-      const uniCamera = gl.getUniformLocation(program, 'u_camera');
+      const uniTransform = gl.getUniformLocation(program, 'u_transform');
       const uniZoom = gl.getUniformLocation(program, 'u_zoom');
       const uniPointSize = gl.getUniformLocation(program, 'u_pointSize');
       const uniSizeFalloff = gl.getUniformLocation(program, 'u_sizeFalloff');
@@ -137,8 +176,7 @@ if (!canvas) {
       gl.uniform1f(uniMinPointSize, MIN_POINT_SIZE);
 
       const state = {
-        zoom: 1,
-        camera: { x: 0, y: 0 }
+        transform: identityTransform()
       };
 
       const pointers = new Map();
@@ -151,14 +189,6 @@ if (!canvas) {
       ];
 
       const moverBuffers = movers.map(() => gl.createBuffer());
-
-      let renderRequested = false;
-      const scheduleRender = () => {
-        if (!renderRequested) {
-          renderRequested = true;
-          requestAnimationFrame(render);
-        }
-      };
 
       const resizeCanvas = () => {
         const dpr = window.devicePixelRatio || DPR_FALLBACK;
@@ -173,40 +203,84 @@ if (!canvas) {
         gl.uniform2f(uniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
       };
 
-      const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+      const screenToView = (x, y) => ({
+        x: x - canvas.clientWidth * 0.5,
+        y: canvas.clientHeight * 0.5 - y
+      });
 
-      const screenToWorld = (x, y) => {
-        const cx = x - canvas.clientWidth * 0.5;
-        const cy = canvas.clientHeight * 0.5 - y;
-        return {
-          x: state.camera.x + cx / state.zoom,
-          y: state.camera.y + cy / state.zoom
-        };
+      const viewToWorld = (viewPt) => {
+        const inv = invertTransform(state.transform);
+        return transformPoint(inv, viewPt);
       };
 
-      const handleSinglePan = (prev, next) => {
-        const dx = next.x - prev.x;
-        const dy = next.y - prev.y;
-        state.camera.x -= dx / state.zoom;
-        state.camera.y += dy / state.zoom;
-      };
+      const updateTransformFromPointers = () => {
+        const pointerArray = Array.from(pointers.values());
+        const count = pointerArray.length;
+        if (count === 0) return;
 
-      const handlePinch = (prevA, prevB, nextA, nextB) => {
-        const prevMid = { x: (prevA.x + prevB.x) * 0.5, y: (prevA.y + prevB.y) * 0.5 };
-        const nextMid = { x: (nextA.x + nextB.x) * 0.5, y: (nextA.y + nextB.y) * 0.5 };
+        if (count >= 3) {
+          const [p1, p2, p3] = pointerArray;
+          const w1 = p1.world;
+          const w2 = p2.world;
+          const w3 = p3.world;
+          const v1 = screenToView(p1.x, p1.y);
+          const v2 = screenToView(p2.x, p2.y);
+          const v3 = screenToView(p3.x, p3.y);
+          const dw1 = { x: w2.x - w1.x, y: w2.y - w1.y };
+          const dw2 = { x: w3.x - w1.x, y: w3.y - w1.y };
+          const det = dw1.x * dw2.y - dw1.y * dw2.x;
+          if (Math.abs(det) < EPS) return;
+          const invDet = 1 / det;
+          const inv00 = dw2.y * invDet;
+          const inv01 = -dw2.x * invDet;
+          const inv10 = -dw1.y * invDet;
+          const inv11 = dw1.x * invDet;
+          const dv1 = { x: v2.x - v1.x, y: v2.y - v1.y };
+          const dv2 = { x: v3.x - v1.x, y: v3.y - v1.y };
+          const m00 = dv1.x * inv00 + dv2.x * inv10;
+          const m01 = dv1.x * inv01 + dv2.x * inv11;
+          const m10 = dv1.y * inv00 + dv2.y * inv10;
+          const m11 = dv1.y * inv01 + dv2.y * inv11;
+          const tx = v1.x - (m00 * w1.x + m01 * w1.y);
+          const ty = v1.y - (m10 * w1.x + m11 * w1.y);
+          state.transform = { m00, m01, m10, m11, tx, ty };
+          return;
+        }
 
-        const prevDist = Math.hypot(prevA.x - prevB.x, prevA.y - prevB.y);
-        const nextDist = Math.hypot(nextA.x - nextB.x, nextA.y - nextB.y);
+        if (count === 2) {
+          const [p1, p2] = pointerArray;
+          const w1 = p1.world;
+          const w2 = p2.world;
+          const v1 = screenToView(p1.x, p1.y);
+          const v2 = screenToView(p2.x, p2.y);
+          const dw = { x: w2.x - w1.x, y: w2.y - w1.y };
+          const dv = { x: v2.x - v1.x, y: v2.y - v1.y };
+          const lenDw = Math.hypot(dw.x, dw.y);
+          const lenDv = Math.hypot(dv.x, dv.y);
+          if (lenDw < EPS || lenDv < EPS) return;
+          const baseScale = clamp(lenDv / lenDw, MIN_ZOOM, MAX_ZOOM);
+          const angle = Math.atan2(dv.y, dv.x) - Math.atan2(dw.y, dw.x);
+          const c = Math.cos(angle);
+          const s = Math.sin(angle);
+          const m00 = baseScale * c;
+          const m01 = -baseScale * s;
+          const m10 = baseScale * s;
+          const m11 = baseScale * c;
+          const tx = v1.x - (m00 * w1.x + m01 * w1.y);
+          const ty = v1.y - (m10 * w1.x + m11 * w1.y);
+          state.transform = { m00, m01, m10, m11, tx, ty };
+          return;
+        }
 
-        if (prevDist < EPS) return;
-
-        const zoomFactor = nextDist / prevDist;
-        const prevMidWorld = screenToWorld(prevMid.x, prevMid.y);
-
-        state.zoom = clamp(state.zoom * zoomFactor, MIN_ZOOM, MAX_ZOOM);
-
-        state.camera.x = prevMidWorld.x - (nextMid.x - canvas.clientWidth * 0.5) / state.zoom;
-        state.camera.y = prevMidWorld.y - (canvas.clientHeight * 0.5 - nextMid.y) / state.zoom;
+        if (count === 1) {
+          const [p] = pointerArray;
+          const world = p.world;
+          const view = screenToView(p.x, p.y);
+          const { m00, m01, m10, m11 } = state.transform;
+          const tx = view.x - (m00 * world.x + m01 * world.y);
+          const ty = view.y - (m10 * world.x + m11 * world.y);
+          state.transform = { m00, m01, m10, m11, tx, ty };
+        }
       };
 
       const evalMover = (mover, t) => ({
@@ -229,57 +303,85 @@ if (!canvas) {
       };
 
       canvas.addEventListener('pointerdown', (e) => {
-        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, prevX: e.clientX, prevY: e.clientY });
+        const world = viewToWorld(screenToView(e.clientX, e.clientY));
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, world });
         canvas.setPointerCapture(e.pointerId);
+        updateTransformFromPointers();
       });
 
       canvas.addEventListener('pointermove', (e) => {
         if (!pointers.has(e.pointerId)) return;
         const data = pointers.get(e.pointerId);
-        data.prevX = data.x;
-        data.prevY = data.y;
         data.x = e.clientX;
         data.y = e.clientY;
-
-        if (pointers.size === 1) {
-          handleSinglePan({ x: data.prevX, y: data.prevY }, { x: data.x, y: data.y });
-        } else if (pointers.size === 2) {
-          const iterator = pointers.values();
-          const a = iterator.next().value;
-          const b = iterator.next().value;
-          handlePinch(
-            { x: a.prevX, y: a.prevY },
-            { x: b.prevX, y: b.prevY },
-            { x: a.x, y: a.y },
-            { x: b.x, y: b.y }
-          );
-        }
-        scheduleRender();
+        updateTransformFromPointers();
       });
 
       const removePointer = (id) => {
         pointers.delete(id);
+        updateTransformFromPointers();
       };
 
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
       canvas.addEventListener('pointercancel', (e) => removePointer(e.pointerId));
 
       const render = () => {
-        renderRequested = false;
+        const t = (performance.now() - startTime) * 0.001;
         resizeCanvas();
+
+        const tf = state.transform;
+        gl.uniformMatrix3fv(
+          uniTransform,
+          false,
+          new Float32Array([
+            tf.m00, tf.m10, 0,
+            tf.m01, tf.m11, 0,
+            tf.tx, tf.ty, 1
+          ])
+        );
+        gl.uniform1f(uniZoom, effectiveScale(tf));
+
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
-        gl.uniform2f(uniCamera, state.camera.x, state.camera.y);
-        gl.uniform1f(uniZoom, state.zoom);
-
+        gl.uniform4fv(uniColor, POINT_COLOR);
+        gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
         gl.drawArrays(gl.POINTS, 0, positions.length / 2);
+
+        movers.forEach((mover, idx) => {
+          const pos = evalMover(mover, t);
+          updateMoverTrail(mover, pos);
+
+          const trailFlat = [];
+          for (let i = 0; i < mover.trail.length; i++) {
+            trailFlat.push(mover.trail[i].x, mover.trail[i].y);
+          }
+
+          if (trailFlat.length >= 4) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(trailFlat), gl.DYNAMIC_DRAW);
+            gl.vertexAttribPointer(attribPosition, 2, gl.FLOAT, false, 0, 0);
+            gl.uniform4fv(uniColor, mover.trailColor);
+            gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
+            gl.drawArrays(gl.LINE_STRIP, 0, trailFlat.length / 2);
+          }
+
+          if (trailFlat.length >= 2) {
+            gl.uniform1f(uniPointSize, HEAD_POINT_SIZE);
+            gl.uniform4fv(uniColor, mover.color);
+            gl.drawArrays(gl.POINTS, trailFlat.length / 2 - 1, 1);
+          }
+        });
+
+        requestAnimationFrame(render);
       };
 
       resizeCanvas();
-      scheduleRender();
+      requestAnimationFrame(render);
 
-      window.addEventListener('resize', scheduleRender);
+      window.addEventListener('resize', () => requestAnimationFrame(render));
     }
   }
 }
