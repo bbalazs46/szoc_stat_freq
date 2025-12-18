@@ -254,7 +254,7 @@ if (!canvas) {
         panel.style.transform = 'translate(-50%, -100%)';
 
         const colorLabel = document.createElement('label');
-        colorLabel.textContent = 'Szín: ';
+        colorLabel.textContent = 'Color: ';
         const colorInput = document.createElement('input');
         colorInput.type = 'color';
         colorInput.style.marginBottom = '6px';
@@ -271,7 +271,7 @@ if (!canvas) {
         freqLabel.appendChild(freqInput);
 
         const phaseLabel = document.createElement('label');
-        phaseLabel.textContent = 'Fázis: ';
+        phaseLabel.textContent = 'Phase: ';
         const phaseInput = document.createElement('input');
         phaseInput.type = 'number';
         phaseInput.step = '0.1';
@@ -279,7 +279,7 @@ if (!canvas) {
         phaseLabel.appendChild(phaseInput);
 
         const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Bezár';
+        closeBtn.textContent = 'Close';
         closeBtn.style.marginTop = '6px';
 
         const layout = document.createElement('div');
@@ -310,12 +310,15 @@ if (!canvas) {
       })();
 
       const movers = [
-        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trail: [], flat: null, screen: null },
-        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trail: [], flat: null, screen: null },
-        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trail: [], flat: null, screen: null }
+        { amp: 50, freq: 1.1, speed: 90, phase: 0, color: [1, 0.2, 0.2, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) },
+        { amp: 70, freq: 0.9, speed: 70, phase: 1.2, color: [0.2, 0.6, 1, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) },
+        { amp: 60, freq: 1.4, speed: 110, phase: -0.8, color: [0.1, 0.9, 0.5, 1], trail: [], flat: new Float32Array(TRAIL_LENGTH * 2) }
       ];
+      const moverScreens = new Array(movers.length).fill(null);
 
       const moverBuffers = movers.map(() => gl.createBuffer());
+
+      let canvasDirty = true;
 
       const resizeCanvas = () => {
         const dpr = window.devicePixelRatio || DPR_FALLBACK;
@@ -332,6 +335,7 @@ if (!canvas) {
         gl.useProgram(lineProgram);
         gl.uniform2f(lineUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.useProgram(program);
+        canvasDirty = false;
       };
 
       const screenToView = (x, y) => ({
@@ -447,7 +451,7 @@ if (!canvas) {
         // Hit test movers in screen space
         let hitIdx = -1;
         for (let i = 0; i < movers.length; i++) {
-          const screen = movers[i].screen;
+          const screen = moverScreens[i];
           if (!screen) continue;
           const dx = e.clientX - screen.x;
           const dy = e.clientY - screen.y;
@@ -514,7 +518,9 @@ if (!canvas) {
 
       const render = () => {
         const t = (performance.now() - startTime) * 0.001;
-        resizeCanvas();
+        if (canvasDirty) {
+          resizeCanvas();
+        }
 
         const tf = state.transform;
         const matrixArr = new Float32Array([
@@ -541,15 +547,12 @@ if (!canvas) {
         movers.forEach((mover, idx) => {
           const pos = evalMover(mover, t);
           updateMoverTrail(mover, pos);
-          movers[idx].screen = worldToScreen(pos);
+          moverScreens[idx] = worldToScreen(pos);
 
           const count = mover.trail.length;
-          if (!mover.flat) {
-            mover.flat = new Float32Array(TRAIL_LENGTH * 2);
-          }
           const required = count * 2;
           if (required > mover.flat.length) {
-            mover.flat = new Float32Array(Math.max(required, TRAIL_LENGTH * 2));
+            mover.flat = new Float32Array(required);
           }
           for (let i = 0; i < count; i++) {
             const idx2 = i * 2;
@@ -582,7 +585,7 @@ if (!canvas) {
 
         if (editor.active !== null) {
           const mover = movers[editor.active];
-          const screenPos = mover.screen;
+          const screenPos = moverScreens[editor.active];
           if (screenPos) {
             editor.panel.style.left = `${screenPos.x}px`;
             editor.panel.style.top = `${screenPos.y}px`;
@@ -595,7 +598,10 @@ if (!canvas) {
       resizeCanvas();
       requestAnimationFrame(render);
 
-      window.addEventListener('resize', () => requestAnimationFrame(render));
+      window.addEventListener('resize', () => {
+        canvasDirty = true;
+        requestAnimationFrame(render);
+      });
     }
   }
 }
