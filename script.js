@@ -175,6 +175,10 @@ if (!canvas) {
 
         const base = gesture.baseTransform;
         const invBase = invertTransform(base);
+        const applyLinear = (mat, vec) => ({
+          x: mat.m00 * vec.x + mat.m01 * vec.y,
+          y: mat.m10 * vec.x + mat.m11 * vec.y
+        });
 
         if (count >= 3) {
           const [p1, p2, p3] = pointerArray;
@@ -220,17 +224,18 @@ if (!canvas) {
           const v2 = screenToView(p2.x, p2.y);
           const dw = { x: w2.x - w1.x, y: w2.y - w1.y };
           const dv = { x: v2.x - v1.x, y: v2.y - v1.y };
-          const lenDw = Math.hypot(dw.x, dw.y);
+          const baseVec = applyLinear(base, dw);
+          const lenBase = Math.hypot(baseVec.x, baseVec.y);
           const lenDv = Math.hypot(dv.x, dv.y);
-          if (lenDw < EPS || lenDv < EPS) return;
-          const baseScale = lenDv / lenDw;
-          const angle = Math.atan2(dv.y, dv.x) - Math.atan2(dw.y, dw.x);
+          if (lenBase < EPS || lenDv < EPS) return;
+          const baseScale = lenDv / lenBase;
+          const angle = Math.atan2(dv.y, dv.x) - Math.atan2(baseVec.y, baseVec.x);
           const c = Math.cos(angle);
           const s = Math.sin(angle);
-          const m00 = baseScale * c;
-          const m01 = -baseScale * s;
-          const m10 = baseScale * s;
-          const m11 = baseScale * c;
+          const m00 = baseScale * (c * base.m00 + -s * base.m10);
+          const m01 = baseScale * (c * base.m01 + -s * base.m11);
+          const m10 = baseScale * (s * base.m00 + c * base.m10);
+          const m11 = baseScale * (s * base.m01 + c * base.m11);
           const tx = v1.x - (m00 * w1.x + m01 * w1.y);
           const ty = v1.y - (m10 * w1.x + m11 * w1.y);
           state.transform = { m00, m01, m10, m11, tx, ty };
