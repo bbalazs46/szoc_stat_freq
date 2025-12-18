@@ -13,7 +13,7 @@ const MAX_ZOOM = 4;
 const EPS = 1e-4;
 const DET_EPS = 1e-8;
 const TRAIL_LENGTH = 400;
-const HEAD_POINT_SIZE = 8;
+const HEAD_POINT_SIZE = 80;
 const MOVER_X_OFFSET = -300;
 const HIT_RADIUS = 180;
 
