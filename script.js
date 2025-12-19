@@ -105,6 +105,7 @@ if (!canvas) {
   let skipOnce = false;
   const startTime = performance.now();
   const editor = createEditor();
+  let followTransform = identityTransform();
 
       const movers = createMovers(TRAIL_SAMPLES);
       const moverScreens = new Array(movers.length).fill(null);
@@ -336,6 +337,7 @@ if (!canvas) {
       });
 
       editor.closeBtn.addEventListener('click', () => {
+        state.transform = { ...followTransform };
         editor.active = null;
         editor.panel.style.display = 'none';
       });
@@ -355,6 +357,7 @@ if (!canvas) {
             tx: -(tf.m00 * pos.x + tf.m01 * pos.y),
             ty: -(tf.m10 * pos.x + tf.m11 * pos.y)
           };
+          followTransform = tf;
         }
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
