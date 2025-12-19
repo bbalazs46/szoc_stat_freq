@@ -18,7 +18,6 @@ import {
   transformPoint,
   invertTransform,
   effectiveScale,
-  colorToHex,
   hexToColor,
   trailColorFromHead,
   displayMessage
@@ -101,11 +100,11 @@ if (!canvas) {
         prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
 
-      const pointers = new Map();
-      const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
-      let skipOnce = false;
-      const startTime = performance.now();
-      const editor = createEditor();
+  const pointers = new Map();
+  const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
+  let skipOnce = false;
+  const startTime = performance.now();
+  const editor = createEditor();
 
       const movers = createMovers(TRAIL_SAMPLES);
       const moverScreens = new Array(movers.length).fill(null);
@@ -145,8 +144,9 @@ if (!canvas) {
 
       const viewToWorld = (viewPt) => viewToWorldWith(viewPt, state.transform);
 
-      const worldToScreen = (p) => {
-        const view = transformPoint(state.transform, p);
+      const worldToScreen = (p, tOverride) => {
+        const t = tOverride || state.transform;
+        const view = transformPoint(t, p);
         return {
           x: view.x + canvas.clientWidth * 0.5,
           y: canvas.clientHeight * 0.5 - view.y
@@ -316,13 +316,23 @@ if (!canvas) {
       editor.freqInput.addEventListener('input', () => {
         if (editor.active === null) return;
         const mover = movers[editor.active];
-        mover.freq = parseFloat(editor.freqInput.value) || mover.freq;
+        mover.freqs = editor.freqInput.value
+          .split(',')
+          .map((v) => parseFloat(v.trim()))
+          .filter((v) => !Number.isNaN(v) && Number.isFinite(v) && v > 0);
+        if (mover.freqs.length === 0) mover.freqs = [1];
       });
 
       editor.phaseInput.addEventListener('input', () => {
         if (editor.active === null) return;
         const mover = movers[editor.active];
         mover.phase = parseFloat(editor.phaseInput.value) || mover.phase;
+      });
+
+      editor.ampInput.addEventListener('input', () => {
+        if (editor.active === null) return;
+        const mover = movers[editor.active];
+        mover.amp = parseFloat(editor.ampInput.value) || mover.amp;
       });
 
       editor.closeBtn.addEventListener('click', () => {
@@ -336,14 +346,23 @@ if (!canvas) {
           resizeCanvas();
         }
 
-        const tf = state.transform;
+        let tf = state.transform;
+        if (editor.active !== null) {
+          const mover = movers[editor.active];
+          const pos = evalMover(mover, t);
+          tf = {
+            ...tf,
+            tx: -(tf.m00 * pos.x + tf.m01 * pos.y),
+            ty: -(tf.m10 * pos.x + tf.m11 * pos.y)
+          };
+        }
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
           tf.m01, tf.m11, 0,
           tf.tx, tf.ty, 1
         ]);
-        const cameraWorld = viewToWorld({ x: 0, y: 0 });
-        const invTf = invertTransform(state.transform);
+        const cameraWorld = viewToWorldWith({ x: 0, y: 0 }, tf);
+        const invTf = invertTransform(tf);
         const invArr = new Float32Array([
           invTf.m00, invTf.m10, 0,
           invTf.m01, invTf.m11, 0,
@@ -382,8 +401,8 @@ if (!canvas) {
         gl.uniform2f(uniCameraWorld, cameraWorld.x, cameraWorld.y);
 
         movers.forEach((mover, idx) => {
-          const pos = evalMover(mover, t);
-          const screenPos = worldToScreen(pos);
+           const pos = evalMover(mover, t);
+           const screenPos = worldToScreen(pos, tf);
           const distCam = Math.hypot(pos.x - cameraWorld.x, pos.y - cameraWorld.y);
           const sizePx = (HEAD_POINT_SIZE * zoomVal) / (1 + SIZE_FALLOFF * distCam);
           moverScreens[idx] = { x: screenPos.x, y: screenPos.y, r: sizePx * 0.5 };
