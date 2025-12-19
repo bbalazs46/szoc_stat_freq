@@ -100,6 +100,7 @@ if (!canvas) {
         warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
         prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
+      const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
 
   const pointers = new Map();
   const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
@@ -361,13 +362,6 @@ if (!canvas) {
           followTransform = tf;
         }
 
-        if (!state.prevLinear) {
-          state.prevLinear = { m00: 1, m01: 0, m10: 0, m11: 1 };
-        }
-        if (!state.warp) {
-          state.warp = { m00: 1, m01: 0, m10: 0, m11: 1 };
-        }
-
         const linear = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
         const linChanged =
           Math.abs(linear.m00 - state.prevLinear.m00) > EPS ||
@@ -392,7 +386,6 @@ if (!canvas) {
 
         const targetWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
 
-        const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
         state.warp = {
           m00: lerpWarp(state.warp.m00, targetWarp.m00),
           m01: lerpWarp(state.warp.m01, targetWarp.m01),
