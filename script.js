@@ -100,7 +100,19 @@ if (!canvas) {
         warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
         prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
+      const identityWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
       const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
+      const lerpMat2 = (cur, target) => ({
+        m00: lerpWarp(cur.m00, target.m00),
+        m01: lerpWarp(cur.m01, target.m01),
+        m10: lerpWarp(cur.m10, target.m10),
+        m11: lerpWarp(cur.m11, target.m11)
+      });
+      const matDiff = (a, b) =>
+        Math.abs(a.m00 - b.m00) > EPS ||
+        Math.abs(a.m01 - b.m01) > EPS ||
+        Math.abs(a.m10 - b.m10) > EPS ||
+        Math.abs(a.m11 - b.m11) > EPS;
 
   const pointers = new Map();
   const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
@@ -363,11 +375,7 @@ if (!canvas) {
         }
 
         const linear = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
-        const linChanged =
-          Math.abs(linear.m00 - state.prevLinear.m00) > EPS ||
-          Math.abs(linear.m01 - state.prevLinear.m01) > EPS ||
-          Math.abs(linear.m10 - state.prevLinear.m10) > EPS ||
-          Math.abs(linear.m11 - state.prevLinear.m11) > EPS;
+        const linChanged = matDiff(linear, state.prevLinear);
 
         const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
         const normWarp = Math.abs(det) > EPS
@@ -377,21 +385,16 @@ if (!canvas) {
               m10: linear.m10 / Math.sqrt(Math.abs(det)),
               m11: linear.m11 / Math.sqrt(Math.abs(det))
             }
-          : { m00: 1, m01: 0, m10: 0, m11: 1 };
+          : { ...identityWarp };
 
         if (linChanged) {
           state.warp = { ...normWarp };
           state.prevLinear = { ...linear };
         }
 
-        const targetWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
+        const targetWarp = identityWarp;
 
-        state.warp = {
-          m00: lerpWarp(state.warp.m00, targetWarp.m00),
-          m01: lerpWarp(state.warp.m01, targetWarp.m01),
-          m10: lerpWarp(state.warp.m10, targetWarp.m10),
-          m11: lerpWarp(state.warp.m11, targetWarp.m11)
-        };
+        state.warp = lerpMat2(state.warp, targetWarp);
 
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
