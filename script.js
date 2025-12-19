@@ -11,6 +11,7 @@ import {
   TRAIL_SAMPLES,
   HEAD_POINT_SIZE,
   HIT_RADIUS,
+  WARP_LERP,
   HIT_EXTRA
 } from './constants.js';
 import {
@@ -359,6 +360,39 @@ if (!canvas) {
           };
           followTransform = tf;
         }
+
+        const linear = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
+        const linChanged =
+          Math.abs(linear.m00 - state.prevLinear.m00) > EPS ||
+          Math.abs(linear.m01 - state.prevLinear.m01) > EPS ||
+          Math.abs(linear.m10 - state.prevLinear.m10) > EPS ||
+          Math.abs(linear.m11 - state.prevLinear.m11) > EPS;
+
+        const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
+        const normWarp = Math.abs(det) > EPS
+          ? {
+              m00: linear.m00 / Math.sqrt(Math.abs(det)),
+              m01: linear.m01 / Math.sqrt(Math.abs(det)),
+              m10: linear.m10 / Math.sqrt(Math.abs(det)),
+              m11: linear.m11 / Math.sqrt(Math.abs(det))
+            }
+          : { m00: 1, m01: 0, m10: 0, m11: 1 };
+
+        if (linChanged) {
+          state.warp = { ...normWarp };
+          state.prevLinear = { ...linear };
+        }
+
+        const targetWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
+
+        const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
+        state.warp = {
+          m00: lerpWarp(state.warp.m00, targetWarp.m00),
+          m01: lerpWarp(state.warp.m01, targetWarp.m01),
+          m10: lerpWarp(state.warp.m10, targetWarp.m10),
+          m11: lerpWarp(state.warp.m11, targetWarp.m11)
+        };
+
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
           tf.m01, tf.m11, 0,
@@ -373,8 +407,8 @@ if (!canvas) {
         ]);
 
         const warpArr = new Float32Array([
-          1, 0,
-          0, 1
+          state.warp.m00, state.warp.m10,
+          state.warp.m01, state.warp.m11
         ]);
 
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
