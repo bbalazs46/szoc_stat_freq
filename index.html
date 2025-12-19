@@ -1,1 +1,294 @@
-<html></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Szoc Stat Frequencies</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #0a0a0f;
+      color: #e9eef6;
+      overflow: hidden;
+    }
+    #canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      background: radial-gradient(circle at 20% 20%, rgba(0, 255, 255, 0.12), transparent 40%),
+                  radial-gradient(circle at 80% 70%, rgba(255, 0, 120, 0.12), transparent 45%),
+                  #050508;
+    }
+    .panel {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      width: min(360px, 90vw);
+      backdrop-filter: blur(8px);
+      background: rgba(8, 12, 20, 0.78);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+    }
+    .panel h1 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      letter-spacing: 0.2px;
+      font-weight: 700;
+      color: #dff4ff;
+    }
+    .freq-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .freq-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: 700;
+      color: #c5e6ff;
+    }
+    label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      gap: 8px;
+      color: #d1d8e5;
+    }
+    input[type="range"] {
+      flex: 1;
+      accent-color: #5cd7ff;
+    }
+    .row-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 10px;
+    }
+    button {
+      background: linear-gradient(120deg, #2b9bff, #8a7bff);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-weight: 700;
+      width: 100%;
+      transition: transform 120ms ease, box-shadow 120ms ease;
+      box-shadow: 0 8px 25px rgba(85, 156, 255, 0.25);
+    }
+    button:hover { transform: translateY(-1px); }
+    button:active { transform: translateY(0); }
+    .value {
+      min-width: 70px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: #a8e2ff;
+      font-weight: 700;
+    }
+    .hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #8ba0ba;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <section class="panel" aria-label="Frequency settings">
+    <h1>Frequencies</h1>
+    <div id="freq-list"></div>
+    <button id="add-frequency" type="button">Add frequency</button>
+    <p class="hint">Each frequency has its own amplitude and phase controls. Trails are thick for easier tracking.</p>
+  </section>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const freqListEl = document.getElementById("freq-list");
+    const addBtn = document.getElementById("add-frequency");
+
+    const frequencies = [
+      { freq: 0.6, amplitude: 180, phase: 0 },
+      { freq: 1.4, amplitude: 90, phase: Math.PI / 2 },
+      { freq: 2.1, amplitude: 60, phase: -Math.PI / 3 }
+    ];
+
+    const trail = [];
+    const TRAIL_DURATION_SECONDS = 7;
+    const EXPECTED_FPS = 60;
+    // History size assumes 60 FPS; a fixed sample count means higher refresh shortens the visible duration and lower refresh lengthens it.
+    const trailLength = TRAIL_DURATION_SECONDS * EXPECTED_FPS;
+    const trailWidth = 4; // wide trails for better visibility
+    const TRAIL_FADE_ALPHA = 0.2;
+    const TRAIL_FADE_RGB = "5, 5, 10";
+    const NEW_FREQ_STEP = 0.5;
+    const DEFAULT_FREQ = 1;
+    const DEFAULT_AMPLITUDE = 80;
+    const DEFAULT_PHASE = 0;
+    const MOTION_TUNING = {
+      // Scales Y's angular speed to ~85% of X to avoid resonant overlap while keeping loops dense; tweak to tighten/loosen spirals.
+      yAngularScale: 0.85,
+      // Mixes half the phase into Y to keep paths stable but visibly asymmetric; lower for symmetry, higher for dramatic skew.
+      phaseBlendRatio: 0.5
+    };
+    let trailGradient;
+
+    function updateGradient() {
+      trailGradient = ctx.createLinearGradient(-canvas.width / 2, -canvas.height / 2, canvas.width / 2, canvas.height / 2);
+      trailGradient.addColorStop(0, "rgba(92, 215, 255, 0.85)");
+      trailGradient.addColorStop(1, "rgba(255, 130, 240, 0.9)");
+    }
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      updateGradient();
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    function fmtPhase(rad) {
+      return rad.toFixed(2) + " rad";
+    }
+
+    function fmtAmp(a) {
+      return a.toFixed(0);
+    }
+
+    function renderControls() {
+      freqListEl.innerHTML = "";
+      frequencies.forEach((item, idx) => {
+        const row = document.createElement("div");
+        row.className = "freq-row";
+
+        const header = document.createElement("div");
+        header.className = "freq-header";
+        header.innerHTML = `<span>Frequency ${idx + 1}</span><span class="value">${item.freq.toFixed(2)} Hz</span>`;
+        row.appendChild(header);
+
+        const ampRow = document.createElement("div");
+        ampRow.className = "row-grid";
+        const ampLabel = document.createElement("span");
+        ampLabel.textContent = "Amplitude";
+        const ampValue = document.createElement("span");
+        ampValue.className = "value";
+        ampValue.textContent = fmtAmp(item.amplitude);
+        const ampInput = document.createElement("input");
+        ampInput.type = "range";
+        ampInput.min = "0";
+        ampInput.max = "260";
+        ampInput.step = "1";
+        ampInput.value = item.amplitude;
+        ampInput.addEventListener("input", (e) => {
+          item.amplitude = Number(e.target.value);
+          ampValue.textContent = fmtAmp(item.amplitude);
+        });
+        ampRow.append(ampLabel, ampInput, ampValue);
+        row.appendChild(ampRow);
+
+        const phaseRow = document.createElement("div");
+        phaseRow.className = "row-grid";
+        const phaseLabel = document.createElement("span");
+        phaseLabel.textContent = "Phase";
+        const phaseValue = document.createElement("span");
+        phaseValue.className = "value";
+        phaseValue.textContent = fmtPhase(item.phase);
+        const phaseInput = document.createElement("input");
+        phaseInput.type = "range";
+        phaseInput.min = String(-Math.PI);
+        phaseInput.max = String(Math.PI);
+        phaseInput.step = "0.01";
+        phaseInput.value = item.phase;
+        phaseInput.addEventListener("input", (e) => {
+          item.phase = Number(e.target.value);
+          phaseValue.textContent = fmtPhase(item.phase);
+        });
+        phaseRow.append(phaseLabel, phaseInput, phaseValue);
+        row.appendChild(phaseRow);
+
+        freqListEl.appendChild(row);
+      });
+    }
+
+    addBtn.addEventListener("click", () => {
+      const last = frequencies[frequencies.length - 1];
+      const nextFreq = last.freq + NEW_FREQ_STEP;
+      const roundedFreq = Math.round(nextFreq * 100) / 100;
+      frequencies.push({ freq: roundedFreq, amplitude: DEFAULT_AMPLITUDE, phase: DEFAULT_PHASE });
+      renderControls();
+    });
+
+    renderControls();
+
+    function computeVerticalMotion(angle, amplitude, phase) {
+      // Blends angle and phase using MOTION_TUNING to reduce resonance on Y while keeping asymmetry.
+      return amplitude * Math.sin(angle * MOTION_TUNING.yAngularScale + phase * MOTION_TUNING.phaseBlendRatio);
+    }
+
+    function computePosition(timeSec) {
+      let x = 0;
+      let y = 0;
+      frequencies.forEach(({ freq, amplitude, phase }) => {
+        const angle = freq * timeSec + phase;
+        x += amplitude * Math.cos(angle);
+        y += computeVerticalMotion(angle, amplitude, phase);
+      });
+      return { x, y };
+    }
+
+    function animate(ts) {
+      const t = ts * 0.001;
+      const pos = computePosition(t);
+      trail.push(pos);
+      if (trail.length > trailLength) trail.shift();
+
+      ctx.fillStyle = `rgba(${TRAIL_FADE_RGB}, ${TRAIL_FADE_ALPHA})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+
+      if (trail.length > 1) {
+        ctx.beginPath();
+        trail.forEach((p, i) => {
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.strokeStyle = trailGradient;
+        ctx.lineWidth = trailWidth;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "rgba(255,255,255,0.8)";
+      ctx.shadowBlur = 18;
+      ctx.fill();
+      ctx.restore();
+
+      requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>
