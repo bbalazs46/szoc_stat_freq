@@ -11,6 +11,7 @@ import {
   TRAIL_SAMPLES,
   HEAD_POINT_SIZE,
   HIT_RADIUS,
+  WARP_LERP,
   HIT_EXTRA
 } from './constants.js';
 import {
@@ -25,6 +26,20 @@ import {
 import { createPrograms } from './shaders.js';
 import { createEditor } from './editor.js';
 import { createMovers, evalMover } from './movers.js';
+
+const identityWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
+const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
+const lerpMat2 = (cur, target) => ({
+  m00: lerpWarp(cur.m00, target.m00),
+  m01: lerpWarp(cur.m01, target.m01),
+  m10: lerpWarp(cur.m10, target.m10),
+  m11: lerpWarp(cur.m11, target.m11)
+});
+const matDiff = (a, b) =>
+  Math.abs(a.m00 - b.m00) > EPS ||
+  Math.abs(a.m01 - b.m01) > EPS ||
+  Math.abs(a.m10 - b.m10) > EPS ||
+  Math.abs(a.m11 - b.m11) > EPS;
 
 const canvas = document.getElementById('glCanvas');
 
@@ -96,7 +111,7 @@ if (!canvas) {
 
       const state = {
         transform: identityTransform(),
-        warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
+        warp: { ...identityWarp },
         prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
 
@@ -359,6 +374,34 @@ if (!canvas) {
           };
           followTransform = tf;
         }
+
+        const linear = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
+        const linChanged = matDiff(linear, state.prevLinear);
+
+        const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
+        // Normalize linear part to preserve area (keep radius invariant)
+        const absDet = Math.abs(det);
+        const signDet = Math.sign(det) || 1;
+        const scale = absDet > EPS ? signDet * Math.sqrt(absDet) : 1;
+        const normWarp = absDet > EPS
+          ? {
+              m00: linear.m00 / scale,
+              m01: linear.m01 / scale,
+              m10: linear.m10 / scale,
+              m11: linear.m11 / scale
+            }
+          : { ...state.warp };
+
+        if (linChanged) {
+          state.warp = { ...normWarp };
+          state.prevLinear = { ...linear };
+        }
+
+        // Always relax current warp back toward identity for the slow "flow" effect
+        if (matDiff(state.warp, identityWarp)) {
+          state.warp = lerpMat2(state.warp, identityWarp);
+        }
+
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
           tf.m01, tf.m11, 0,
@@ -373,8 +416,8 @@ if (!canvas) {
         ]);
 
         const warpArr = new Float32Array([
-          1, 0,
-          0, 1
+          state.warp.m00, state.warp.m10,
+          state.warp.m01, state.warp.m11
         ]);
 
         gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
