@@ -14,7 +14,7 @@ export const shaderSources = {
       vec2 view = transformed.xy;
       vec2 clip = view / (u_resolution * 0.5);
       gl_Position = vec4(clip, 0.0, 1.0);
-      float size = u_pointSize * u_zoom / (1.0 + u_sizeFalloff * length(a_position - u_cameraWorld));
+      float size = u_pointSize / (1.0 + u_sizeFalloff * length(a_position - u_cameraWorld));
       gl_PointSize = max(u_minPointSize, size);
     }
   `,
@@ -105,7 +105,7 @@ export const shaderSources = {
       vec2 local = world - bestCenter;
       vec2 warped = u_warp * local;
 
-      float radius = u_baseSize * u_zoom / (1.0 + u_sizeFalloff * length(bestCenter - u_cameraWorld));
+      float radius = u_baseSize / (1.0 + u_sizeFalloff * length(bestCenter - u_cameraWorld));
       float d = length(warped);
       if (d > radius) discard;
 
