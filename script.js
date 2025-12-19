@@ -111,7 +111,8 @@ if (!canvas) {
       const state = {
         transform: identityTransform(),
         warp: { ...identityWarp },
-        prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
+        prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 },
+        prevTransform: identityTransform()
       };
 
   const pointers = new Map();
@@ -376,6 +377,10 @@ if (!canvas) {
 
         const linear = { m00: tf.m00, m01: tf.m01, m10: tf.m10, m11: tf.m11 };
         const linChanged = matDiff(linear, state.prevLinear);
+        const moved =
+          linChanged ||
+          Math.abs(tf.tx - state.prevTransform.tx) > EPS ||
+          Math.abs(tf.ty - state.prevTransform.ty) > EPS;
 
         const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
         // Normalize linear part to preserve area (keep radius invariant)
@@ -397,9 +402,10 @@ if (!canvas) {
         }
 
         // Always relax current warp back toward identity for the slow "flow" effect
-        if (matDiff(state.warp, identityWarp)) {
+        if (!moved && matDiff(state.warp, identityWarp)) {
           state.warp = lerpMat2(state.warp, identityWarp);
         }
+        state.prevTransform = { ...tf };
 
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
