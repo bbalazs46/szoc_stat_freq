@@ -27,6 +27,20 @@ import { createPrograms } from './shaders.js';
 import { createEditor } from './editor.js';
 import { createMovers, evalMover } from './movers.js';
 
+const identityWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
+const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
+const lerpMat2 = (cur, target) => ({
+  m00: lerpWarp(cur.m00, target.m00),
+  m01: lerpWarp(cur.m01, target.m01),
+  m10: lerpWarp(cur.m10, target.m10),
+  m11: lerpWarp(cur.m11, target.m11)
+});
+const matDiff = (a, b) =>
+  Math.abs(a.m00 - b.m00) > EPS ||
+  Math.abs(a.m01 - b.m01) > EPS ||
+  Math.abs(a.m10 - b.m10) > EPS ||
+  Math.abs(a.m11 - b.m11) > EPS;
+
 const canvas = document.getElementById('glCanvas');
 
 if (!canvas) {
@@ -97,22 +111,9 @@ if (!canvas) {
 
       const state = {
         transform: identityTransform(),
-        warp: { m00: 1, m01: 0, m10: 0, m11: 1 },
+        warp: { ...identityWarp },
         prevLinear: { m00: 1, m01: 0, m10: 0, m11: 1 }
       };
-      const identityWarp = { m00: 1, m01: 0, m10: 0, m11: 1 };
-      const lerpWarp = (a, b) => a + WARP_LERP * (b - a);
-      const lerpMat2 = (cur, target) => ({
-        m00: lerpWarp(cur.m00, target.m00),
-        m01: lerpWarp(cur.m01, target.m01),
-        m10: lerpWarp(cur.m10, target.m10),
-        m11: lerpWarp(cur.m11, target.m11)
-      });
-      const matDiff = (a, b) =>
-        Math.abs(a.m00 - b.m00) > EPS ||
-        Math.abs(a.m01 - b.m01) > EPS ||
-        Math.abs(a.m10 - b.m10) > EPS ||
-        Math.abs(a.m11 - b.m11) > EPS;
 
   const pointers = new Map();
   const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
@@ -378,12 +379,14 @@ if (!canvas) {
         const linChanged = matDiff(linear, state.prevLinear);
 
         const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
-        const normWarp = Math.abs(det) > EPS
+        const absDet = Math.abs(det);
+        const scale = absDet > EPS ? Math.sqrt(absDet) : 1;
+        const normWarp = absDet > EPS
           ? {
-              m00: linear.m00 / Math.sqrt(Math.abs(det)),
-              m01: linear.m01 / Math.sqrt(Math.abs(det)),
-              m10: linear.m10 / Math.sqrt(Math.abs(det)),
-              m11: linear.m11 / Math.sqrt(Math.abs(det))
+              m00: linear.m00 / scale,
+              m01: linear.m01 / scale,
+              m10: linear.m10 / scale,
+              m11: linear.m11 / scale
             }
           : { ...identityWarp };
 
@@ -392,9 +395,7 @@ if (!canvas) {
           state.prevLinear = { ...linear };
         }
 
-        const targetWarp = identityWarp;
-
-        state.warp = lerpMat2(state.warp, targetWarp);
+        state.warp = lerpMat2(state.warp, identityWarp);
 
         const matrixArr = new Float32Array([
           tf.m00, tf.m10, 0,
