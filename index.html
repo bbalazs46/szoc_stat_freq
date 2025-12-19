@@ -30,7 +30,7 @@
       position: fixed;
       top: 12px;
       left: 12px;
-      width: min(360px, 90vw);
+      width: min(380px, 92vw);
       backdrop-filter: blur(8px);
       background: rgba(8, 12, 20, 0.78);
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -61,6 +61,42 @@
       justify-content: space-between;
       font-weight: 700;
       color: #c5e6ff;
+    }
+    .point-card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .point-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      gap: 8px;
+    }
+    .point-meta {
+      font-size: 12px;
+      color: #8ba0ba;
+    }
+    .point-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      display: inline-block;
+      margin-right: 6px;
+      box-shadow: 0 0 10px rgba(255,255,255,0.25);
+    }
+    .point-controls {
+      margin-top: 8px;
+      display: none;
+    }
+    .point-controls.open {
+      display: block;
+    }
+    .add-row {
+      margin-top: 6px;
     }
     label {
       display: flex;
@@ -112,22 +148,49 @@
 <body>
   <canvas id="canvas"></canvas>
   <section class="panel" aria-label="Frequency settings">
-    <h1>Frequencies</h1>
-    <div id="freq-list"></div>
-    <button id="add-frequency" type="button">Add frequency</button>
-    <p class="hint">Each frequency has its own amplitude and phase controls. Trails are thick for easier tracking.</p>
+    <h1>Moving points</h1>
+    <div id="points-list"></div>
+    <p class="hint">Tap a point to open its amplitude/phase sliders. Trails are thick for easier tracking.</p>
   </section>
 
   <script>
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    const freqListEl = document.getElementById("freq-list");
-    const addBtn = document.getElementById("add-frequency");
+    const pointsListEl = document.getElementById("points-list");
 
-    const frequencies = [
-      { freq: 0.6, amplitude: 180, phase: 0 },
-      { freq: 1.4, amplitude: 90, phase: Math.PI / 2 },
-      { freq: 2.1, amplitude: 60, phase: -Math.PI / 3 }
+    const points = [
+      {
+        name: "Point 1",
+        color: "#7cf5c5",
+        frequencies: [
+          { freq: 0.6, amplitude: 180, phase: 0 },
+          { freq: 1.4, amplitude: 90, phase: Math.PI / 2 },
+          { freq: 2.1, amplitude: 60, phase: -Math.PI / 3 }
+        ],
+        trail: [],
+        expanded: true
+      },
+      {
+        name: "Point 2",
+        color: "#8fb9ff",
+        frequencies: [
+          { freq: 1.1, amplitude: 140, phase: Math.PI / 4 },
+          { freq: 1.8, amplitude: 70, phase: -Math.PI / 6 }
+        ],
+        trail: [],
+        expanded: false
+      },
+      {
+        name: "Point 3",
+        color: "#ffd27a",
+        frequencies: [
+          { freq: 0.9, amplitude: 120, phase: -Math.PI / 8 },
+          { freq: 1.6, amplitude: 80, phase: Math.PI / 3 },
+          { freq: 2.4, amplitude: 45, phase: -Math.PI / 2 }
+        ],
+        trail: [],
+        expanded: false
+      }
     ];
 
     const trail = [];
@@ -172,9 +235,9 @@
       return a.toFixed(0);
     }
 
-    function renderControls() {
-      freqListEl.innerHTML = "";
-      frequencies.forEach((item, idx) => {
+    function renderPointControls(point, controlsEl) {
+      controlsEl.innerHTML = "";
+      point.frequencies.forEach((item, idx) => {
         const row = document.createElement("div");
         row.className = "freq-row";
 
@@ -223,29 +286,67 @@
         phaseRow.append(phaseLabel, phaseInput, phaseValue);
         row.appendChild(phaseRow);
 
-        freqListEl.appendChild(row);
+        controlsEl.appendChild(row);
+      });
+
+      const addRow = document.createElement("div");
+      addRow.className = "add-row";
+      const addBtn = document.createElement("button");
+      addBtn.type = "button";
+      addBtn.textContent = "Add frequency";
+      addBtn.addEventListener("click", () => {
+        const last = point.frequencies[point.frequencies.length - 1];
+        const nextFreq = last ? last.freq + NEW_FREQ_STEP : DEFAULT_FREQ;
+        const roundedFreq = Math.round(nextFreq * 100) / 100;
+        point.frequencies.push({ freq: roundedFreq, amplitude: DEFAULT_AMPLITUDE, phase: DEFAULT_PHASE });
+        renderPointsPanel();
+      });
+      addRow.appendChild(addBtn);
+      controlsEl.appendChild(addRow);
+    }
+
+    function renderPointsPanel() {
+      pointsListEl.innerHTML = "";
+      points.forEach((point, idx) => {
+        const card = document.createElement("div");
+        card.className = "point-card";
+
+        const header = document.createElement("div");
+        header.className = "point-header";
+        header.innerHTML = `
+          <div>
+            <span class="point-dot" style="background:${point.color}"></span>
+            <strong>${point.name}</strong>
+          </div>
+          <span class="point-meta">${point.frequencies.length} freqs</span>
+        `;
+        header.addEventListener("click", () => {
+          point.expanded = !point.expanded;
+          renderPointsPanel();
+        });
+        card.appendChild(header);
+
+        const controls = document.createElement("div");
+        controls.className = "point-controls";
+        if (point.expanded) controls.classList.add("open");
+        renderPointControls(point, controls);
+        card.appendChild(controls);
+
+        pointsListEl.appendChild(card);
       });
     }
 
-    addBtn.addEventListener("click", () => {
-      const last = frequencies[frequencies.length - 1];
-      const nextFreq = last.freq + NEW_FREQ_STEP;
-      const roundedFreq = Math.round(nextFreq * 100) / 100;
-      frequencies.push({ freq: roundedFreq, amplitude: DEFAULT_AMPLITUDE, phase: DEFAULT_PHASE });
-      renderControls();
-    });
-
-    renderControls();
+    renderPointsPanel();
 
     function computeVerticalMotion(angle, amplitude, phase) {
       // Blends angle and phase using MOTION_TUNING to reduce resonance on Y while keeping asymmetry.
       return amplitude * Math.sin(angle * MOTION_TUNING.yAngularScale + phase * MOTION_TUNING.phaseBlendRatio);
     }
 
-    function computePosition(timeSec) {
+    function computePosition(point, timeSec) {
       let x = 0;
       let y = 0;
-      frequencies.forEach(({ freq, amplitude, phase }) => {
+      point.frequencies.forEach(({ freq, amplitude, phase }) => {
         const angle = freq * timeSec + phase;
         x += amplitude * Math.cos(angle);
         y += computeVerticalMotion(angle, amplitude, phase);
@@ -255,35 +356,38 @@
 
     function animate(ts) {
       const t = ts * 0.001;
-      const pos = computePosition(t);
-      trail.push(pos);
-      if (trail.length > trailLength) trail.shift();
-
       ctx.fillStyle = `rgba(${TRAIL_FADE_RGB}, ${TRAIL_FADE_ALPHA})`;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
 
-      if (trail.length > 1) {
-        ctx.beginPath();
-        trail.forEach((p, i) => {
-          if (i === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.strokeStyle = trailGradient;
-        ctx.lineWidth = trailWidth;
-        ctx.lineJoin = "round";
-        ctx.lineCap = "round";
-        ctx.stroke();
-      }
+      points.forEach((point) => {
+        const pos = computePosition(point, t);
+        point.trail.push(pos);
+        if (point.trail.length > trailLength) point.trail.shift();
 
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "rgba(255,255,255,0.8)";
-      ctx.shadowBlur = 18;
-      ctx.fill();
+        if (point.trail.length > 1) {
+          ctx.beginPath();
+          point.trail.forEach((p, i) => {
+            if (i === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
+          ctx.strokeStyle = point.color;
+          ctx.lineWidth = trailWidth;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = point.color;
+        ctx.shadowColor = point.color;
+        ctx.shadowBlur = 16;
+        ctx.fill();
+      });
+
       ctx.restore();
 
       requestAnimationFrame(animate);
