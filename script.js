@@ -407,7 +407,7 @@ if (!canvas) {
            const pos = evalMover(mover, t);
            const screenPos = worldToScreen(pos, tf);
           const distCam = Math.hypot(pos.x - cameraWorld.x, pos.y - cameraWorld.y);
-          const sizePx = (HEAD_POINT_SIZE * zoomVal) / (1 + SIZE_FALLOFF * distCam);
+          const sizePx = (HEAD_POINT_SIZE * zoomVal*10) / (1 + SIZE_FALLOFF * distCam);
           moverScreens[idx] = { x: screenPos.x, y: screenPos.y, r: sizePx * 0.5 };
 
           const sampleCount = TRAIL_SAMPLES;
