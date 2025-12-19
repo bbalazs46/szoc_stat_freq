@@ -265,7 +265,7 @@ if (!canvas) {
           if (!screen) continue;
           const dx = e.clientX - screen.x;
           const dy = e.clientY - screen.y;
-          const radius = (screen.r || 0) + HIT_EXTRA;
+          const radius = (screen.r ?? HEAD_POINT_SIZE * 0.5) + HIT_EXTRA;
           if (Math.hypot(dx, dy) <= radius) {
             hitIdx = i;
             break;
