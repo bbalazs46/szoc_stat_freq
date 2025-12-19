@@ -65,7 +65,6 @@ export const shaderSources = {
     uniform float u_verticalSpacing;
     uniform float u_halfSpacing;
     uniform float u_baseSize;
-    uniform float u_sizeFalloff;
     uniform float u_zoom;
     uniform vec2 u_cameraWorld;
     uniform vec4 u_color;
@@ -105,7 +104,7 @@ export const shaderSources = {
       vec2 local = world - bestCenter;
       vec2 warped = u_warp * local;
 
-      float radius = u_baseSize / (1.0 + u_sizeFalloff * length(bestCenter - u_cameraWorld));
+      float radius = u_baseSize;
       float d = length(warped);
       if (d > radius) discard;
 

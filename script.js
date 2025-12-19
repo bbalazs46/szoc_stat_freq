@@ -79,7 +79,6 @@ if (!canvas) {
       const bgUniVerticalSpacing = gl.getUniformLocation(bgProgram, 'u_verticalSpacing');
       const bgUniHalfSpacing = gl.getUniformLocation(bgProgram, 'u_halfSpacing');
       const bgUniBaseSize = gl.getUniformLocation(bgProgram, 'u_baseSize');
-      const bgUniSizeFalloff = gl.getUniformLocation(bgProgram, 'u_sizeFalloff');
       const bgUniZoom = gl.getUniformLocation(bgProgram, 'u_zoom');
       const bgUniCameraWorld = gl.getUniformLocation(bgProgram, 'u_cameraWorld');
       const bgUniColor = gl.getUniformLocation(bgProgram, 'u_color');
@@ -434,7 +433,6 @@ if (!canvas) {
         gl.uniform1f(bgUniVerticalSpacing, GRID_SPACING * Math.sqrt(3) * 0.5);
         gl.uniform1f(bgUniHalfSpacing, GRID_SPACING * 0.5);
         gl.uniform1f(bgUniBaseSize, BASE_POINT_SIZE);
-        gl.uniform1f(bgUniSizeFalloff, SIZE_FALLOFF);
         const zoomVal = effectiveScale(tf);
         gl.uniform1f(bgUniZoom, zoomVal);
         gl.uniform2f(bgUniCameraWorld, cameraWorld.x, cameraWorld.y);
