@@ -379,6 +379,7 @@ if (!canvas) {
         const linChanged = matDiff(linear, state.prevLinear);
 
         const det = linear.m00 * linear.m11 - linear.m01 * linear.m10;
+        // Normalize linear part to preserve area (keep radius invariant)
         const absDet = Math.abs(det);
         const scale = absDet > EPS ? Math.sqrt(absDet) : 1;
         const normWarp = absDet > EPS
@@ -395,6 +396,7 @@ if (!canvas) {
           state.prevLinear = { ...linear };
         }
 
+        // Always relax current warp back toward identity for the slow "flow" effect
         state.warp = lerpMat2(state.warp, identityWarp);
 
         const matrixArr = new Float32Array([
