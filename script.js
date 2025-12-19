@@ -323,33 +323,39 @@ if (!canvas) {
       canvas.addEventListener('pointerup', (e) => removePointer(e.pointerId));
       canvas.addEventListener('pointercancel', (e) => removePointer(e.pointerId));
 
-      editor.colorInput.addEventListener('input', () => {
-        if (editor.active === null) return;
-        const mover = movers[editor.active];
-        mover.color = hexToColor(editor.colorInput.value);
-      });
+       editor.colorInput.addEventListener('input', () => {
+         if (editor.active === null) return;
+         const mover = movers[editor.active];
+         mover.color = hexToColor(editor.colorInput.value);
+       });
 
-      editor.freqInput.addEventListener('input', () => {
-        if (editor.active === null) return;
-        const mover = movers[editor.active];
-        mover.freqs = editor.freqInput.value
-          .split(',')
-          .map((v) => parseFloat(v.trim()))
-          .filter((v) => !Number.isNaN(v) && Number.isFinite(v) && v > 0);
-        if (mover.freqs.length === 0) mover.freqs = [1];
-      });
+       editor.freqInput.addEventListener('input', () => {
+         if (editor.active === null) return;
+         const mover = movers[editor.active];
+         const prevAmps = mover.ampLevels || [];
+         mover.freqs = editor.freqInput.value
+           .split(',')
+           .map((v) => parseFloat(v.trim()))
+           .filter((v) => !Number.isNaN(v) && Number.isFinite(v) && v > 0);
+         if (mover.freqs.length === 0) mover.freqs = [1];
+         mover.ampLevels = mover.freqs.map((_, idx) => prevAmps[idx] ?? mover.amp);
+         editor.setFromMover(mover);
+       });
 
-      editor.phaseInput.addEventListener('input', () => {
-        if (editor.active === null) return;
-        const mover = movers[editor.active];
-        mover.phase = parseFloat(editor.phaseInput.value) || mover.phase;
-      });
+       editor.onPhaseChange((value) => {
+         if (editor.active === null) return;
+         const mover = movers[editor.active];
+         mover.phase = value;
+       });
 
-      editor.ampInput.addEventListener('input', () => {
-        if (editor.active === null) return;
-        const mover = movers[editor.active];
-        mover.amp = parseFloat(editor.ampInput.value) || mover.amp;
-      });
+       editor.onAmpChange((levels) => {
+         if (editor.active === null) return;
+         const mover = movers[editor.active];
+         mover.ampLevels = levels;
+         mover.amp = levels.length > 0
+           ? levels.reduce((acc, v) => acc + v, 0) / levels.length
+           : mover.amp;
+       });
 
       editor.closeBtn.addEventListener('click', () => {
         state.transform = { ...followTransform };
