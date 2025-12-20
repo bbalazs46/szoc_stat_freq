@@ -220,3 +220,80 @@ canvas {
   letter-spacing: 0.03em;
   font-size: 12px;
 }
+
+.freq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.freq-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.freq-label {
+  font-weight: 700;
+  color: #dfe7ff;
+  letter-spacing: 0.01em;
+}
+
+.vector-circle {
+  position: relative;
+  width: 110px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.35));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 20px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.vector-circle::before,
+.vector-circle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.vector-circle::after {
+  width: 1px;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.vector-circle::before {
+  width: 100%;
+  height: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.vector-handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffdf4d, #ff9800);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.freq-value {
+  color: #c7d9ff;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
