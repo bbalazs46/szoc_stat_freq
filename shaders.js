@@ -21,6 +21,9 @@ export const shaderSources = {
   fragmentSource: `
     precision mediump float;
     uniform vec4 u_color;
+    uniform vec4 u_secondaryColor;
+    uniform float u_outlineThickness;
+    uniform float u_style;
 
     void main() {
       vec2 coord = gl_PointCoord - 0.5;
@@ -68,6 +71,9 @@ export const shaderSources = {
     uniform float u_zoom;
     uniform vec2 u_cameraWorld;
     uniform vec4 u_color;
+    uniform vec4 u_secondaryColor;
+    uniform float u_outlineThickness;
+    uniform float u_style;
 
     vec2 rand2(vec2 st) {
       st = vec2(
@@ -108,7 +114,24 @@ export const shaderSources = {
       float d = length(warped);
       if (d > radius) discard;
 
-      gl_FragColor = u_color;
+      float outlineStart = max(0.0, radius - u_outlineThickness);
+      float outlineMask = u_outlineThickness <= 0.0 ? 0.0 : step(outlineStart, d);
+      vec4 base = mix(u_color, u_secondaryColor, outlineMask);
+
+      if (u_style < 0.5) {
+        float glow = smoothstep(radius, outlineStart, d);
+        float rings = sin((d * 0.2) + (u_cameraWorld.x + u_cameraWorld.y) * 0.002) * 0.5 + 0.5;
+        float blend = clamp(0.25 + 0.35 * (1.0 - glow) + 0.25 * rings, 0.0, 1.0);
+        base.rgb = mix(base.rgb, u_secondaryColor.rgb, blend);
+        base.a = mix(base.a, u_secondaryColor.a, 0.35 + blend * 0.35);
+      } else if (u_style > 1.5) {
+        float wave = abs(sin((warped.x + warped.y) * 0.08));
+        float bands = smoothstep(0.2, 0.8, wave);
+        base.rgb = mix(u_color.rgb, u_secondaryColor.rgb, bands);
+        base.a *= 0.8 + 0.2 * bands;
+      }
+
+      gl_FragColor = base;
     }
   `
 };
