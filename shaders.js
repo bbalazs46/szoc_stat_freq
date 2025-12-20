@@ -81,15 +81,24 @@ export const shaderSources = {
     uniform float u_baseSize;
     uniform float u_zoom;
     uniform vec2 u_cameraWorld;
-    uniform vec4 u_color;
-    uniform vec4 u_secondaryColor;
-    uniform float u_outlineThickness;
-    uniform float u_style;
+     uniform vec4 u_color;
+     uniform vec4 u_secondaryColor;
+     uniform float u_outlineThickness;
+     uniform float u_style;
+     // Style thresholds align with the point fragment shader to keep visuals consistent.
+     const float STYLE_RADAR_MAX = 0.5;
+     const float STYLE_WAVE_MIN = 1.5;
+     const float RADAR_RING_FREQ = 0.2;
+     const float RADAR_WORLD_MOD = 0.002;
+     const float RADAR_BASE_BLEND = 0.25;
+     const float RADAR_GLOW_BLEND = 0.35;
+     const float RADAR_RING_BLEND = 0.25;
+     const float WAVE_FREQ = 0.08;
 
-    vec2 rand2(vec2 st) {
-      st = vec2(
-        dot(st, vec2(127.1, 311.7)),
-        dot(st, vec2(269.5, 183.3))
+     vec2 rand2(vec2 st) {
+       st = vec2(
+         dot(st, vec2(127.1, 311.7)),
+         dot(st, vec2(269.5, 183.3))
       );
       return fract(sin(st) * 43758.5453);
     }
