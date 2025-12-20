@@ -182,6 +182,22 @@ export const createEditor = () => {
     freqInput,
     closeBtn,
     active: null,
+    setTheme(themeKey) {
+      // Remove all theme classes
+      panel.classList.remove('theme-light', 'theme-radar', 'theme-neon');
+      // Map canvas theme keys to editor theme classes
+      // 'soft' (Finom) -> light theme, 'radar' -> radar theme, 'audio' (Wave) -> neon theme
+      const themeMap = {
+        'soft': 'theme-light',
+        'radar': 'theme-radar',
+        'audio': 'theme-neon'
+      };
+      const editorTheme = themeMap[themeKey];
+      if (editorTheme) {
+        panel.classList.add(editorTheme);
+      }
+      // If no mapping exists, panel uses base dark theme styles
+    },
     setFromMover(mover) {
       colorInput.value = colorToHex(mover.color);
       freqInput.value = mover.freqs.join(',');

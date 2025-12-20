@@ -90,6 +90,7 @@ if (!canvas) {
       let activeThemeKey = DEFAULT_THEME;
       let activeTheme = THEMES[activeThemeKey];
       const themeButtons = new Map();
+      let editor = null;
 
       const syncThemeButtons = () => {
         themeButtons.forEach((btn, key) => {
@@ -108,6 +109,9 @@ if (!canvas) {
         activeTheme = next;
         document.documentElement.style.setProperty('--page-bg', next.pageBackground);
         syncThemeButtons();
+        if (editor) {
+          editor.setTheme(key);
+        }
         gl.useProgram(program);
         // Point uniforms belong to the main program; background-specific uniforms are set after switching to bgProgram.
         gl.uniform1f(uniPointSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
@@ -172,7 +176,8 @@ if (!canvas) {
   const gesture = { baseTransform: identityTransform(), basePointers: new Map() };
   let skipOnce = false;
   const startTime = performance.now();
-  const editor = createEditor();
+  editor = createEditor();
+  editor.setTheme(activeThemeKey);
   let followTransform = identityTransform();
   const deriveVectors = (mover) => {
     if (mover.freqVectors && mover.freqVectors.length) return mover.freqVectors;
