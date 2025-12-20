@@ -25,7 +25,8 @@ export const shaderSources = {
     uniform float u_outlineThickness;
     uniform float u_style;
 
-    // Style thresholds: < STYLE_RADAR_MAX -> radar look, > STYLE_WAVE_MIN -> wave look, mid-range keeps default dots
+    // Style thresholds: < STYLE_RADAR_MAX -> radar look (theme style 0), > STYLE_WAVE_MIN -> wave look (theme style 2),
+    // mid-range keeps default dots (theme style 1). Boundaries sit midway between the integer theme style values.
     const float STYLE_RADAR_MAX = 0.5;
     const float STYLE_WAVE_MIN = 1.5;
     const float RADAR_RING_FREQ = 0.2;
