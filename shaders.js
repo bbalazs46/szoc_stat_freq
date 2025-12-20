@@ -95,6 +95,7 @@ export const shaderSources = {
     float roundf(float v) { return floor(v + 0.5); }
 
     void main() {
+      float styleValue = u_style;
       vec2 frag = gl_FragCoord.xy;
       vec2 view = vec2(frag.x - u_resolution.x * 0.5, frag.y - u_resolution.y * 0.5);
       vec3 world3 = u_invTransform * vec3(view, 1.0);
@@ -127,18 +128,19 @@ export const shaderSources = {
       float outlineMask = u_outlineThickness <= 0.0 ? 0.0 : step(outlineStart, d);
       vec4 base = mix(u_color, u_secondaryColor, outlineMask);
 
-      if (u_style < STYLE_RADAR_MAX) {
+      if (styleValue < STYLE_RADAR_MAX) {
         float glow = smoothstep(radius, outlineStart, d);
         float rings = sin((d * RADAR_RING_FREQ) + (u_cameraWorld.x + u_cameraWorld.y) * RADAR_WORLD_MOD) * 0.5 + 0.5;
         float blend = clamp(RADAR_BASE_BLEND + RADAR_GLOW_BLEND * (1.0 - glow) + RADAR_RING_BLEND * rings, 0.0, 1.0);
         base.rgb = mix(base.rgb, u_secondaryColor.rgb, blend);
         base.a = mix(base.a, u_secondaryColor.a, 0.35 + blend * 0.35);
-      } else if (u_style > STYLE_WAVE_MIN) {
+      } else if (styleValue > STYLE_WAVE_MIN) {
         float wave = abs(sin((warped.x + warped.y) * WAVE_FREQ));
         float bands = smoothstep(0.2, 0.8, wave);
         base.rgb = mix(u_color.rgb, u_secondaryColor.rgb, bands);
         base.a *= 0.8 + 0.2 * bands;
       }
+      // Mid-range styles between STYLE_RADAR_MAX and STYLE_WAVE_MIN intentionally keep the base fill/outline look.
 
       gl_FragColor = base;
     }
