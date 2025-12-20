@@ -109,6 +109,7 @@ if (!canvas) {
         document.documentElement.style.setProperty('--page-bg', next.pageBackground);
         syncThemeButtons();
         gl.useProgram(program);
+        // Point uniforms belong to the main program; background-specific uniforms are set after switching to bgProgram.
         gl.uniform1f(uniPointSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
         gl.useProgram(bgProgram);
       };
