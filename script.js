@@ -86,55 +86,55 @@ if (!canvas) {
       const bgUniOutline = gl.getUniformLocation(bgProgram, 'u_outlineThickness');
       const bgUniStyle = gl.getUniformLocation(bgProgram, 'u_style');
 
-       let activeThemeKey = DEFAULT_THEME;
-       let activeTheme = THEMES[activeThemeKey];
-       const themeButtons = new Map();
+      let activeThemeKey = DEFAULT_THEME;
+      let activeTheme = THEMES[activeThemeKey];
+      const themeButtons = new Map();
 
-       const syncThemeButtons = () => {
-         themeButtons.forEach((btn, key) => {
-           if (key === activeThemeKey) {
-             btn.classList.add('active');
-           } else {
-             btn.classList.remove('active');
-           }
-         });
-       };
+      const syncThemeButtons = () => {
+        themeButtons.forEach((btn, key) => {
+          if (key === activeThemeKey) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+      };
 
-       const applyTheme = (key) => {
-         const next = THEMES[key];
-         if (!next) return;
-         activeThemeKey = key;
-         activeTheme = next;
-         document.documentElement.style.setProperty('--page-bg', next.pageBackground);
-         syncThemeButtons();
-         gl.useProgram(program);
-         gl.uniform1f(uniPointSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
-         gl.useProgram(bgProgram);
-       };
+      const applyTheme = (key) => {
+        const next = THEMES[key];
+        if (!next) return;
+        activeThemeKey = key;
+        activeTheme = next;
+        document.documentElement.style.setProperty('--page-bg', next.pageBackground);
+        syncThemeButtons();
+        gl.useProgram(program);
+        gl.uniform1f(uniPointSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
+        gl.useProgram(bgProgram);
+      };
 
-       const createThemeSwitcher = () => {
-         const wrapper = document.createElement('div');
-         wrapper.className = 'theme-switcher';
-         const order = ['radar', 'soft', 'audio'];
-         order.forEach((key) => {
-           const theme = THEMES[key];
-           if (!theme) return;
-           const btn = document.createElement('button');
-           btn.type = 'button';
-           btn.className = 'theme-button';
-           btn.textContent = theme.label;
-           btn.addEventListener('click', (e) => {
-             e.stopPropagation();
-             applyTheme(theme.key);
-           });
-           themeButtons.set(theme.key, btn);
-           wrapper.appendChild(btn);
-         });
-         document.body.appendChild(wrapper);
-       };
+      const createThemeSwitcher = () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'theme-switcher';
+        const order = ['radar', 'soft', 'audio'];
+        order.forEach((key) => {
+          const theme = THEMES[key];
+          if (!theme) return;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'theme-button';
+          btn.textContent = theme.label;
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyTheme(theme.key);
+          });
+          themeButtons.set(theme.key, btn);
+          wrapper.appendChild(btn);
+        });
+        document.body.appendChild(wrapper);
+      };
 
-       createThemeSwitcher();
-       applyTheme(DEFAULT_THEME);
+      createThemeSwitcher();
+      applyTheme(DEFAULT_THEME);
 
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
