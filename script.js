@@ -127,9 +127,10 @@ if (!canvas) {
       const moverBuffers = movers.map(() => gl.createBuffer());
 
       let canvasDirty = true;
+      let dpr = window.devicePixelRatio || DPR_FALLBACK;
 
       const resizeCanvas = () => {
-        const dpr = window.devicePixelRatio || DPR_FALLBACK;
+        dpr = window.devicePixelRatio || DPR_FALLBACK;
         const displayWidth = Math.floor(canvas.clientWidth * dpr);
         const displayHeight = Math.floor(canvas.clientHeight * dpr);
 
@@ -149,8 +150,8 @@ if (!canvas) {
       };
 
       const screenToView = (x, y) => ({
-        x: x - canvas.clientWidth * 0.5,
-        y: canvas.clientHeight * 0.5 - y
+        x: (x - canvas.clientWidth * 0.5) * dpr,
+        y: (canvas.clientHeight * 0.5 - y) * dpr
       });
 
       const viewToWorldWith = (viewPt, t) => {
@@ -164,8 +165,8 @@ if (!canvas) {
         const t = tOverride || state.transform;
         const view = transformPoint(t, p);
         return {
-          x: view.x + canvas.clientWidth * 0.5,
-          y: canvas.clientHeight * 0.5 - view.y
+          x: (view.x / dpr) + canvas.clientWidth * 0.5,
+          y: canvas.clientHeight * 0.5 - (view.y / dpr)
         };
       };
 
@@ -461,7 +462,8 @@ if (!canvas) {
            const screenPos = worldToScreen(pos, tf);
           const distCam = Math.hypot(pos.x - cameraWorld.x, pos.y - cameraWorld.y);
           const sizePx = (HEAD_POINT_SIZE * zoomVal) / (1 + SIZE_FALLOFF * distCam);
-          moverScreens[idx] = { x: screenPos.x, y: screenPos.y, r: sizePx * 0.5 };
+          const sizeCss = sizePx / dpr;
+          moverScreens[idx] = { x: screenPos.x, y: screenPos.y, r: sizeCss * 0.5 };
 
           const sampleCount = TRAIL_SAMPLES;
           const dt = TRAIL_DURATION / sampleCount;
