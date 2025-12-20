@@ -64,3 +64,4 @@ export const THEMES = {
 };
 
 export const DEFAULT_THEME = 'soft';
+export const THEME_ORDER = ['radar', 'soft', 'audio'];

@@ -12,7 +12,8 @@ import {
   WARP_LERP,
   HIT_EXTRA,
   THEMES,
-  DEFAULT_THEME
+  DEFAULT_THEME,
+  THEME_ORDER
 } from './constants.js';
 import {
   identityTransform,
@@ -115,8 +116,7 @@ if (!canvas) {
       const createThemeSwitcher = () => {
         const wrapper = document.createElement('div');
         wrapper.className = 'theme-switcher';
-        const order = ['radar', 'soft', 'audio'];
-        order.forEach((key) => {
+        THEME_ORDER.forEach((key) => {
           const theme = THEMES[key];
           if (!theme) return;
           const btn = document.createElement('button');

@@ -25,6 +25,15 @@ export const shaderSources = {
     uniform float u_outlineThickness;
     uniform float u_style;
 
+    const float STYLE_RADAR_MAX = 0.5;
+    const float STYLE_WAVE_MIN = 1.5;
+    const float RADAR_RING_FREQ = 0.2;
+    const float RADAR_WORLD_MOD = 0.002;
+    const float RADAR_BASE_BLEND = 0.25;
+    const float RADAR_GLOW_BLEND = 0.35;
+    const float RADAR_RING_BLEND = 0.25;
+    const float WAVE_FREQ = 0.08;
+
     void main() {
       vec2 coord = gl_PointCoord - 0.5;
       float dist = length(coord);
@@ -118,14 +127,14 @@ export const shaderSources = {
       float outlineMask = u_outlineThickness <= 0.0 ? 0.0 : step(outlineStart, d);
       vec4 base = mix(u_color, u_secondaryColor, outlineMask);
 
-      if (u_style < 0.5) {
+      if (u_style < STYLE_RADAR_MAX) {
         float glow = smoothstep(radius, outlineStart, d);
-        float rings = sin((d * 0.2) + (u_cameraWorld.x + u_cameraWorld.y) * 0.002) * 0.5 + 0.5;
-        float blend = clamp(0.25 + 0.35 * (1.0 - glow) + 0.25 * rings, 0.0, 1.0);
+        float rings = sin((d * RADAR_RING_FREQ) + (u_cameraWorld.x + u_cameraWorld.y) * RADAR_WORLD_MOD) * 0.5 + 0.5;
+        float blend = clamp(RADAR_BASE_BLEND + RADAR_GLOW_BLEND * (1.0 - glow) + RADAR_RING_BLEND * rings, 0.0, 1.0);
         base.rgb = mix(base.rgb, u_secondaryColor.rgb, blend);
         base.a = mix(base.a, u_secondaryColor.a, 0.35 + blend * 0.35);
-      } else if (u_style > 1.5) {
-        float wave = abs(sin((warped.x + warped.y) * 0.08));
+      } else if (u_style > STYLE_WAVE_MIN) {
+        float wave = abs(sin((warped.x + warped.y) * WAVE_FREQ));
         float bands = smoothstep(0.2, 0.8, wave);
         base.rgb = mix(u_color.rgb, u_secondaryColor.rgb, bands);
         base.a *= 0.8 + 0.2 * bands;
