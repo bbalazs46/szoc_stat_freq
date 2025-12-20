@@ -95,7 +95,7 @@ export const createEditor = () => {
   overlay.className = 'editor-overlay';
 
   const panel = document.createElement('div');
-  panel.className = 'editor-panel';
+  panel.className = 'editor-panel theme-dark';
   panel.style.display = 'none';
 
   const header = document.createElement('div');
@@ -182,6 +182,18 @@ export const createEditor = () => {
     freqInput,
     closeBtn,
     active: null,
+    setTheme(themeKey) {
+      // Remove all theme classes
+      panel.classList.remove('theme-dark', 'theme-light', 'theme-radar', 'theme-neon');
+      // Map canvas theme keys to editor theme classes
+      const themeMap = {
+        'soft': 'theme-light',
+        'radar': 'theme-radar',
+        'audio': 'theme-neon'
+      };
+      const editorTheme = themeMap[themeKey] || 'theme-dark';
+      panel.classList.add(editorTheme);
+    },
     setFromMover(mover) {
       colorInput.value = colorToHex(mover.color);
       freqInput.value = mover.freqs.join(',');
