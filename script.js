@@ -121,6 +121,19 @@ if (!canvas) {
   const startTime = performance.now();
   const editor = createEditor();
   let followTransform = identityTransform();
+  const deriveVectors = (mover) => {
+    if (mover.freqVectors && mover.freqVectors.length) return mover.freqVectors;
+    const amps = mover.ampLevels && mover.ampLevels.length
+      ? mover.ampLevels
+      : mover.freqs.map(() => mover.amp);
+    const phases = mover.phaseLevels && mover.phaseLevels.length
+      ? mover.phaseLevels
+      : mover.freqs.map(() => mover.phase ?? 0);
+    return mover.freqs.map((_, idx) => ({
+      amp: amps[idx] ?? mover.amp,
+      phase: phases[idx] ?? (mover.phase ?? 0)
+    }));
+  };
 
       const movers = createMovers(TRAIL_SAMPLES);
       const moverScreens = new Array(movers.length).fill(null);
@@ -333,29 +346,32 @@ if (!canvas) {
        editor.freqInput.addEventListener('input', () => {
          if (editor.active === null) return;
          const mover = movers[editor.active];
-         const prevAmps = mover.ampLevels || [];
+         const prevVectors = deriveVectors(mover);
          mover.freqs = editor.freqInput.value
            .split(',')
            .map((v) => parseFloat(v.trim()))
            .filter((v) => !Number.isNaN(v) && Number.isFinite(v) && v > 0);
          if (mover.freqs.length === 0) mover.freqs = [1];
-         mover.ampLevels = mover.freqs.map((_, idx) => prevAmps[idx] ?? mover.amp);
+         mover.freqVectors = mover.freqs.map((_, idx) => prevVectors[idx] ?? { amp: mover.amp, phase: mover.phase ?? 0 });
+         mover.ampLevels = mover.freqVectors.map((v) => v.amp);
+         mover.phaseLevels = mover.freqVectors.map((v) => v.phase);
+         mover.amp = mover.freqVectors.length
+           ? mover.freqVectors.reduce((acc, v) => acc + v.amp, 0) / mover.freqVectors.length
+           : mover.amp;
+         mover.phase = mover.freqVectors[0]?.phase ?? mover.phase ?? 0;
          editor.setFromMover(mover);
        });
 
-       editor.onPhaseChange((value) => {
+       editor.onVectorChange((vectors) => {
          if (editor.active === null) return;
          const mover = movers[editor.active];
-         mover.phase = value;
-       });
-
-       editor.onAmpChange((levels) => {
-         if (editor.active === null) return;
-         const mover = movers[editor.active];
-         mover.ampLevels = levels;
-         mover.amp = levels.length > 0
-           ? levels.reduce((acc, v) => acc + v, 0) / levels.length
+         mover.freqVectors = vectors;
+         mover.ampLevels = vectors.map((v) => v.amp);
+         mover.phaseLevels = vectors.map((v) => v.phase);
+         mover.amp = vectors.length > 0
+           ? vectors.reduce((acc, v) => acc + v.amp, 0) / vectors.length
            : mover.amp;
+         mover.phase = vectors[0]?.phase ?? mover.phase ?? 0;
        });
 
       editor.closeBtn.addEventListener('click', () => {
