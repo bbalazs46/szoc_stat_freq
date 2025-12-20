@@ -56,7 +56,7 @@ export const hexToColor = (hex) => {
   ];
 };
 
-export const trailColorFromHead = (color) => [color[0], color[1], color[2], 0.5];
+export const trailColorFromHead = (color, alpha = 0.5) => [color[0], color[1], color[2], alpha];
 
 export const displayMessage = (text) => {
   const message = document.createElement('p');

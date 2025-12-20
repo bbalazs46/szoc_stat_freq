@@ -1,7 +1,5 @@
 import {
   DPR_FALLBACK,
-  BG_COLOR,
-  POINT_COLOR,
   GRID_SPACING,
   BASE_POINT_SIZE,
   MIN_POINT_SIZE,
@@ -12,7 +10,10 @@ import {
   HEAD_POINT_SIZE,
   HIT_RADIUS,
   WARP_LERP,
-  HIT_EXTRA
+  HIT_EXTRA,
+  THEMES,
+  DEFAULT_THEME,
+  THEME_ORDER
 } from './constants.js';
 import {
   identityTransform,
@@ -82,6 +83,59 @@ if (!canvas) {
       const bgUniZoom = gl.getUniformLocation(bgProgram, 'u_zoom');
       const bgUniCameraWorld = gl.getUniformLocation(bgProgram, 'u_cameraWorld');
       const bgUniColor = gl.getUniformLocation(bgProgram, 'u_color');
+      const bgUniSecondaryColor = gl.getUniformLocation(bgProgram, 'u_secondaryColor');
+      const bgUniOutline = gl.getUniformLocation(bgProgram, 'u_outlineThickness');
+      const bgUniStyle = gl.getUniformLocation(bgProgram, 'u_style');
+
+      let activeThemeKey = DEFAULT_THEME;
+      let activeTheme = THEMES[activeThemeKey];
+      const themeButtons = new Map();
+
+      const syncThemeButtons = () => {
+        themeButtons.forEach((btn, key) => {
+          if (key === activeThemeKey) {
+            btn.classList.add('active');
+          } else {
+            btn.classList.remove('active');
+          }
+        });
+      };
+
+      const applyTheme = (key) => {
+        const next = THEMES[key];
+        if (!next) return;
+        activeThemeKey = key;
+        activeTheme = next;
+        document.documentElement.style.setProperty('--page-bg', next.pageBackground);
+        syncThemeButtons();
+        gl.useProgram(program);
+        // Point uniforms belong to the main program; background-specific uniforms are set after switching to bgProgram.
+        gl.uniform1f(uniPointSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
+        gl.useProgram(bgProgram);
+      };
+
+      const createThemeSwitcher = () => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'theme-switcher';
+        THEME_ORDER.forEach((key) => {
+          const theme = THEMES[key];
+          if (!theme) return;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'theme-button';
+          btn.textContent = theme.label;
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyTheme(theme.key);
+          });
+          themeButtons.set(theme.key, btn);
+          wrapper.appendChild(btn);
+        });
+        document.body.appendChild(wrapper);
+      };
+
+      createThemeSwitcher();
+      applyTheme(DEFAULT_THEME);
 
       const positionBuffer = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -103,8 +157,7 @@ if (!canvas) {
         gl.STATIC_DRAW
       );
 
-      gl.uniform4fv(uniColor, POINT_COLOR);
-      gl.uniform1f(uniPointSize, BASE_POINT_SIZE);
+      gl.uniform4fv(uniColor, activeTheme.fillColor);
       gl.uniform1f(uniSizeFalloff, SIZE_FALLOFF);
       gl.uniform1f(uniMinPointSize, MIN_POINT_SIZE);
 
@@ -448,7 +501,7 @@ if (!canvas) {
           state.warp.m01, state.warp.m11
         ]);
 
-        gl.clearColor(BG_COLOR[0], BG_COLOR[1], BG_COLOR[2], BG_COLOR[3]);
+        gl.clearColor(activeTheme.clearColor[0], activeTheme.clearColor[1], activeTheme.clearColor[2], activeTheme.clearColor[3]);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         gl.useProgram(bgProgram);
@@ -458,14 +511,18 @@ if (!canvas) {
         gl.uniform2f(bgUniResolution, gl.drawingBufferWidth, gl.drawingBufferHeight);
         gl.uniformMatrix3fv(bgUniInvTransform, false, invArr);
         gl.uniformMatrix2fv(bgUniWarp, false, warpArr);
-        gl.uniform1f(bgUniGridSpacing, GRID_SPACING);
-        gl.uniform1f(bgUniVerticalSpacing, GRID_SPACING * Math.sqrt(3) * 0.5);
-        gl.uniform1f(bgUniHalfSpacing, GRID_SPACING * 0.5);
-        gl.uniform1f(bgUniBaseSize, BASE_POINT_SIZE);
+        const themeGrid = activeTheme.gridSpacing ?? GRID_SPACING;
+        gl.uniform1f(bgUniGridSpacing, themeGrid);
+        gl.uniform1f(bgUniVerticalSpacing, themeGrid * Math.sqrt(3) * 0.5);
+        gl.uniform1f(bgUniHalfSpacing, themeGrid * 0.5);
+        gl.uniform1f(bgUniBaseSize, activeTheme.baseSize ?? BASE_POINT_SIZE);
         const zoomVal = effectiveScale(tf);
         gl.uniform1f(bgUniZoom, zoomVal);
         gl.uniform2f(bgUniCameraWorld, cameraWorld.x, cameraWorld.y);
-        gl.uniform4fv(bgUniColor, POINT_COLOR);
+        gl.uniform4fv(bgUniColor, activeTheme.fillColor);
+        gl.uniform4fv(bgUniSecondaryColor, activeTheme.outlineColor);
+        gl.uniform1f(bgUniOutline, activeTheme.outlineThickness ?? 0.0);
+        gl.uniform1f(bgUniStyle, activeTheme.style ?? 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
 
         gl.useProgram(program);
@@ -495,7 +552,7 @@ if (!canvas) {
           if (sampleCount >= 2) {
             gl.useProgram(lineProgram);
             gl.uniformMatrix3fv(lineUniTransform, false, matrixArr);
-            const trailColor = trailColorFromHead(mover.color);
+            const trailColor = trailColorFromHead(mover.color, activeTheme.trailOpacity ?? 0.5);
             gl.uniform4fv(lineUniColor, trailColor);
             gl.bindBuffer(gl.ARRAY_BUFFER, moverBuffers[idx]);
             gl.bufferData(gl.ARRAY_BUFFER, slice, gl.DYNAMIC_DRAW);
